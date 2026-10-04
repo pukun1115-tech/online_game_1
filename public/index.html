@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>connection test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            touch-action: manipulation;
+        }
+
+        #game {
+            position: fixed;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+        }
+
+        #canvas {
+            position: fixed;
+            top: 0px;
+            left: 0px;
+            z-index: 1;
+            display: block;
+            background-color: rgba(0, 0, 0, 1);
+        }
+
+        .chat {
+            position: fixed;
+            left: 10px;
+            bottom: 10px;
+            z-index: 2;
+            color: rgba(255, 255, 255, 1);
+            font-family: sans-serif;
+        }
+
+        .chat-form {
+            display: flex;
+            align-items: center;
+        }
+
+        #messages,
+        #messageInput,
+        #sendButton {
+            border: 1px solid rgba(127, 127, 127, 1);
+            border-radius: 2px;
+        }
+
+        #messages {
+            box-sizing: border-box;
+            height: 150px;
+            width: 250px;
+            background-color: rgba(0, 0, 255, 0.2);
+            overflow-y: auto;
+            overflow-x: hidden;
+            overflow-wrap: anywhere;
+            word-break: normal;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(127, 127, 127, 1) rgba(0, 0, 0, 0);
+        }
+
+        #messageInput {
+            box-sizing: border-box;
+            padding: 0px 5px;
+            width: 200px;
+            height: 25px;
+            font-size: 15px;
+        }
+
+        #sendButton {
+            box-sizing: border-box;
+            width: 50px;
+            height: 25px;
+            font-size: 15px;
+            color: rgba(0, 0, 0, 1);
+            background-color: rgba(191, 191, 255, 0.8);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="game">
+        <div class="chat">
+            <div id="messages"></div>
+            <div class="chat-form">
+                <input type="text" id="messageInput" placeholder="メッセージを入力" maxlength="100">
+                <button id="sendButton" type="button">送信</button>
+            </div>
+        </div>
+        <canvas id="canvas"></canvas>
+    </div>
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const websocketProtocol = ((location.protocol === "https:") ? "wss:" : "ws:");
+        const socket = new WebSocket(`${websocketProtocol}//${location.host}`);
+
+        const messageInput = document.getElementById("messageInput");
+        const sendButton = document.getElementById("sendButton");
+        const messages = document.getElementById("messages");
+        function addMessage(message) {
+            const messageElement = document.createElement("div");
+            messageElement.textContent = message;
+            messages.appendChild(messageElement);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message !== "" && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: "chat", message: message }));
+                messageInput.value = "";
+            }
+        }
+        sendButton.addEventListener("click", sendMessage);
+
+
+        const inputState = {
+            up: false,
+            down: false,
+            left: false,
+            right: false,
+            isPainting: false,
+            isShooting: false,
+            pointerX: 0,
+            pointerY: 0,
+        };
+        const keys = {};
+        messageInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        });
+        window.addEventListener("keydown", (event) => {
+            keys[event.code] = true;
+            if (event.key === "Enter" && !event.isComposing) {
+                if (document.activeElement === messageInput) {
+                    event.preventDefault();
+                    messageInput.blur();
+                } else {
+                    event.preventDefault();
+                    messageInput.focus();
+                }
+            }
+        });
+        window.addEventListener("keyup", (event) => {
+            keys[event.code] = false;
+        });
+
+        let players = new Map();
+        let bullets = new Set();
+        let playerId = null;
+        let map = [];
+        window.addEventListener("beforeunload", () => {
+            socket.close();
+        });
+
+        window.addEventListener("pointermove", (event) => {
+            const rect = canvas.getBoundingClientRect();
+            inputState.pointerX = event.clientX - rect.left;
+            inputState.pointerY = event.clientY - rect.top;
+        });
+        window.addEventListener("pointerdown", (event) => {
+            inputState.isShooting = true;
+        });
+        window.addEventListener("pointerup", (event) => {
+            inputState.isShooting = false;
+        });
+
+        socket.addEventListener("message", (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === "init") {
+                    playerId = data.id;
+                    map = data.map;
+                    for (const p of data.players) {
+                        players.set(p.id, p);
+                    }
+                } else if (data.type === "playerJoined") {
+                    players.set(data.player.id, { x: data.player.x, y: data.player.y, team: data.player.team });
+                    addMessage(data.player.id + " joined the game");
+                } else if (data.type === "playerLeft") {
+                    players.delete(data.id);
+                    addMessage(data.id + " left the game");
+                } else if (data.type == "playerMove") {
+                    if (players.get(data.playerId)) {
+                        players.set(data.playerId, data.player);
+                    }
+                } else if (data.type === "chat") {
+                    addMessage(data.message);
+                } else if (data.type === "paint") {
+                    map[data.paintedY] = data.str;
+                } else if (data.type === "shoot") {
+                    //
+                }
+            } catch (error) {
+                console.log("受信エラー");
+                console.log(error);
+            }
+        });
+        socket.addEventListener("close", (event) => {
+            addMessage("Disconnected from the server");
+            addMessage("Code: " + event.code);
+            if (event.reason && event.reason !== "") {
+                addMessage("Reason: " + event.reason);
+            }
+        });
+        socket.addEventListener("error", (event) => {
+            console.log("WebSocketエラー: ", event);
+            addMessage("an error occurred in the WebSocket connection");
+        });
+        socket.addEventListener("open", () => {
+            addMessage("Connected to the server");
+        });
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener("resize", () => {
+            setTimeout(() => {
+                resizeCanvas();
+            }, 50);
+        });
+        resizeCanvas();
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const you = players.get(playerId);
+            if (!you) {
+                return;
+            }
+            for (let y = 0; y < map.length; y++) {
+                for (let x = 0; x < map[y].length; x++) {
+                    if (map[y][x] === ".") {
+                        ctx.fillStyle = "rgba(0, 0, 0, 1)";
+                    } else if (map[y][x] === "#") {
+                        ctx.fillStyle = "rgba(127, 127, 127, 1)";
+                    } else if (map[y][x] === "R") {
+                        ctx.fillStyle = "rgba(127, 0, 0, 1)";
+                    } else if (map[y][x] === "G") {
+                        ctx.fillStyle = "rgba(0, 127, 0, 1)";
+                    } else if (map[y][x] === "B") {
+                        ctx.fillStyle = "rgba(0, 0, 127, 1)";
+                    }
+                    ctx.fillRect((x - you.x) * 32 + centerX - 1, (y - you.y) * 32 + centerY - 1, 32 + 1, 32 + 1);
+                }
+            }
+            for (const p of players.keys()) {
+                if (players.get(p).team === "B") {
+                    ctx.strokeStyle = "rgba(0, 0, 255, 1)";
+                } else {
+                    ctx.strokeStyle = "rgba(255, 0, 0, 1)";
+                }
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc((players.get(p).x - you.x) * 32 + centerX + 8, (players.get(p).y - you.y) * 32 + centerY + 8, 8, 0, Math.PI * 2);
+                ctx.stroke();
+                if (players.get(p).isShooting) {
+                    ctx.lineWidth = 4;
+                }
+                ctx.beginPath();
+                ctx.moveTo((players.get(p).x - you.x) * 32 + centerX + 8, (players.get(p).y - you.y) * 32 + centerY + 8);
+                ctx.lineTo((players.get(p).x - you.x) * 32 + centerX + 8 + players.get(p).directionX * 8, (players.get(p).y - you.y) * 32 + centerY + 8 + players.get(p).directionY * 8);
+                ctx.stroke();
+            }
+        }
+        function keysInput() {
+            if (document.activeElement !== messageInput) {
+                inputState.up = (keys["KeyW"] || keys["ArrowUp"]);
+                inputState.down = (keys["KeyS"] || keys["ArrowDown"]);
+                inputState.left = (keys["KeyA"] || keys["ArrowLeft"]);
+                inputState.right = (keys["KeyD"] || keys["ArrowRight"]);
+                inputState.isPainting = (keys["ShiftLeft"] || keys["ShiftRight"] || keys["Space"]);
+            }
+        }
+        function sendState() {
+            if (socket.readyState === WebSocket.OPEN) {
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const dx = inputState.pointerX - centerX;
+                const dy = inputState.pointerY - centerY;
+                const length = Math.hypot(dx, dy);
+                const directionX = dx / length;
+                const directionY = dy / length;
+                socket.send(JSON.stringify({
+                    type: "state", state: {
+                        up: inputState.up,
+                        down: inputState.down,
+                        left: inputState.left,
+                        right: inputState.right,
+                        isPainting: inputState.isPainting,
+                        isShooting: inputState.isShooting,
+                        directionX: directionX,
+                        directionY: directionY
+                    }
+                }));
+            }
+        }
+        function mainLoop() {
+            draw();
+            keysInput();
+            sendState();
+            requestAnimationFrame(mainLoop);
+        }
+        mainLoop();
+    </script>
+</body>
+
+</html>
