@@ -283,21 +283,38 @@ function processPlayerState(socket, playerId, text) {
                 }
             }
             if (obj.state.isShooting) {
-                /*
+                if (!player.canShoot) {
+                    return undefined;
+                }
                 const bullet = {
                     playerId: playerId,
+                    bulletId: crypto.randomUUID(),
+                    bulletSpeed: 0.5,
+                    bulletTeam: player.team,
                     x: player.x + 0.25,
                     y: player.y + 0.25,
                     directionX: player.directionX,
                     directionY: player.directionY
                 };
                 bullets.add(bullet);
-                broadcast(true, socket, { type: "shoot", bullet: bullet });
+                broadcast(true, socket, { type: "addBullet", bullet: bullet });
+                const shootCooldown = 200;
+                player.canShoot = false;
+                setTimeout(() => {
+                    player.canShoot = true;
+                }, shootCooldown);
                 function updateBullet() {
-                    //
+                    bullet.x += bullet.directionX * bullet.bulletSpeed;
+                    bullet.y += bullet.directionY * bullet.bulletSpeed;
+                    if (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) {
+                        bullets.delete(bullet);
+                        broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
+                        return undefined;
+                    }
+                    broadcast(true, socket, { type: "updateBullet", bullet: bullet });
+                    setTimeout(() => updateBullet(), (1000 / 60));
                 }
-                setTimeout(updateBullet, (1000 / 60));
-                */
+                setTimeout(() => updateBullet(), (1000 / 60));
             }
         } else if (obj.type === "chat") {
             broadcast(true, socket, { type: "chat", message: `${playerId}: ${obj.message}` });
@@ -356,11 +373,13 @@ server.on("upgrade", (request, socket, head) => {
     const playerTeam = (Math.random() > 0.5) ? "B" : "R";
     const newPlayer = {
         id: playerId,
+        hp: 100,
         x: (playerTeam === "R") ? 1.25 : 38.25,
         y: (playerTeam === "R") ? 1.25 : 38.25,
         team: playerTeam,
         directionX: 1,
         directionY: 0,
+        canShoot: true,
     }
     players.set(playerId, newPlayer);
     playerIds.set(socket, playerId);

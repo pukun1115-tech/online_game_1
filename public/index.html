@@ -192,8 +192,23 @@
                     addMessage(data.message);
                 } else if (data.type === "paint") {
                     map[data.paintedY] = data.str;
-                } else if (data.type === "shoot") {
-                    //
+                } else if (data.type === "addBullet") {
+                    bullets.add(data.bullet);
+                } else if (data.type === "deleteBullet") {
+                    for (const b of bullets) {
+                        if (b.bulletId === data.bullet.bulletId) {
+                            bullets.delete(b);
+                            break;
+                        }
+                    }
+                } else if (data.type === "updateBullet") {
+                    for (const b of bullets) {
+                        if (b.bulletId === data.bullet.bulletId) {
+                            b.x = data.bullet.x;
+                            b.y = data.bullet.y;
+                            break;
+                        }
+                    }
                 }
             } catch (error) {
                 console.log("受信エラー");
@@ -266,6 +281,12 @@
                 ctx.moveTo((players.get(p).x - you.x) * 32 + centerX + 8, (players.get(p).y - you.y) * 32 + centerY + 8);
                 ctx.lineTo((players.get(p).x - you.x) * 32 + centerX + 8 + players.get(p).directionX * 8, (players.get(p).y - you.y) * 32 + centerY + 8 + players.get(p).directionY * 8);
                 ctx.stroke();
+            }
+            for (const b of bullets) {
+                ctx.fillStyle = b.bulletTeam === "R" ? "rgba(255, 0, 0, 1)" : "rgba(0, 0, 255, 1)";
+                ctx.beginPath();
+                ctx.arc((b.x - you.x) * 32 + centerX, (b.y - you.y) * 32 + centerY, 4, 0, Math.PI * 2);
+                ctx.fill();
             }
         }
         function keysInput() {
