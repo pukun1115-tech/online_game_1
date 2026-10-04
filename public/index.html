@@ -8,6 +8,7 @@
         * {
             margin: 0;
             padding: 0;
+            touch-action: none;
         }
 
         #game {
@@ -171,6 +172,9 @@
             const rect = canvas.getBoundingClientRect();
             inputState.pointerX = event.clientX - rect.left;
             inputState.pointerY = event.clientY - rect.top;
+            inputState.isShooting = false;
+        });
+        canvas.addEventListener("pointercancel", () => {
             inputState.isShooting = false;
         });
 
