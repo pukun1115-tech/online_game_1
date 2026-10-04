@@ -289,7 +289,6 @@ function processPlayerState(socket, playerId, text) {
                 const bullet = {
                     playerId: playerId,
                     bulletId: crypto.randomUUID(),
-                    bulletSpeed: 0.5,
                     bulletTeam: player.team,
                     x: player.x + 0.25,
                     y: player.y + 0.25,
@@ -299,22 +298,23 @@ function processPlayerState(socket, playerId, text) {
                 bullets.add(bullet);
                 broadcast(true, socket, { type: "addBullet", bullet: bullet });
                 const shootCooldown = 200;
+                const bulletSpeed = 0.5;
                 player.canShoot = false;
                 setTimeout(() => {
                     player.canShoot = true;
                 }, shootCooldown);
                 function updateBullet() {
-                    bullet.x += bullet.directionX * bullet.bulletSpeed;
-                    bullet.y += bullet.directionY * bullet.bulletSpeed;
+                    bullet.x += bullet.directionX * bulletSpeed;
+                    bullet.y += bullet.directionY * bulletSpeed;
                     if (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) {
                         bullets.delete(bullet);
                         broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
                         return undefined;
                     }
                     broadcast(true, socket, { type: "updateBullet", bullet: bullet });
-                    setTimeout(() => updateBullet(), (1000 / 60));
+                    setTimeout(() => updateBullet(), 20);
                 }
-                setTimeout(() => updateBullet(), (1000 / 60));
+                setTimeout(() => updateBullet(), 20);
             }
         } else if (obj.type === "chat") {
             broadcast(true, socket, { type: "chat", message: `${playerId}: ${obj.message}` });
@@ -362,15 +362,14 @@ server.on("upgrade", (request, socket, head) => {
         "\r\n"
     );
     socket.write(response);
-
-    //socketをsocketsに追加
+    
     sockets.add(socket);
     function createPlayerId() {
         const f = Math.random().toString(36).substring(2, 2 + 6);
         return f.charAt(0).toUpperCase() + f.slice(1);
     }
     const playerId = createPlayerId();
-    const playerTeam = (Math.random() > 0.5) ? "B" : "R";
+    const playerTeam = (Math.random() > 0.5) ? "R" : "B";
     const newPlayer = {
         id: playerId,
         hp: 100,
@@ -385,7 +384,6 @@ server.on("upgrade", (request, socket, head) => {
     playerIds.set(socket, playerId);
     sendTextFrame(socket, JSON.stringify({ type: "init", id: playerId, map: map, players: Array.from(players.values()) }));
     broadcast(false, socket, { type: "playerJoined", player: newPlayer });
-    console.log(playerId + " joined the game");
 
     const MAX_BUFFER_SIZE = 512 * 512;
     let receiveBuffer = Buffer.alloc(0);
