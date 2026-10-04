@@ -162,9 +162,15 @@
             inputState.pointerY = event.clientY - rect.top;
         });
         canvas.addEventListener("pointerdown", (event) => {
+            const rect = canvas.getBoundingClientRect();
+            inputState.pointerX = event.clientX - rect.left;
+            inputState.pointerY = event.clientY - rect.top;
             inputState.isShooting = true;
         });
         canvas.addEventListener("pointerup", (event) => {
+            const rect = canvas.getBoundingClientRect();
+            inputState.pointerX = event.clientX - rect.left;
+            inputState.pointerY = event.clientY - rect.top;
             inputState.isShooting = false;
         });
 
