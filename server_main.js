@@ -337,7 +337,7 @@ function processPlayerState(socket, playerId, text) {
                     player.canShoot = true;
                 }, shootCooldown);
                 function updateBullet() {
-                    for (int i = 0; i < 20; i++) {
+                    for (let i = 0; i < 20; i++) {
                         bullet.x += bullet.directionX * bulletSpeed / 20;
                         bullet.y += bullet.directionY * bulletSpeed / 20;
                         if (
