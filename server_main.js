@@ -312,7 +312,7 @@ function processPlayerState(socket, playerId, text) {
                 player.directionX = obj.state.directionX;
                 player.directionY = obj.state.directionY;
             }
-            broadcast(true, socket, { type: "playerMove", playerId: playerId, player: player });
+            broadcast(true, socket, { type: "playerUpdate", playerId: playerId, player: player });
             if (obj.state.isPainting) {
                 const enemyTeam = { R: "B", B: "R" };
                 const newChar = player.team;
@@ -348,7 +348,7 @@ function processPlayerState(socket, playerId, text) {
                     player.canShoot = false;
                     setTimeout(() => { player.canShoot = true; }, shootCooldown);
                     player.shooted = true;
-                    setTimeout(() => { player.shooted = false; }, shootCooldown / 2);
+                    setTimeout(() => { player.shooted = false; }, shootCooldown / 3);
                     function updateBullet() {
                         for (let i = 0; i < 50; i++) {
                             bullet.x += bullet.directionX * bulletSpeed / 50;
@@ -361,26 +361,25 @@ function processPlayerState(socket, playerId, text) {
                                 broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
                                 return undefined;
                             }
-                            const pId = checkBulletPlayerCollision(bullet.x, bullet.y);
-                            if (pId !== null) {
-                                if (players.get(pId).team === bullet.bulletTeam) {
+                            const hitId = checkBulletPlayerCollision(bullet.x, bullet.y);
+                            if (hitId !== null) {
+                                if (players.get(hitId).team === bullet.bulletTeam) {
                                     continue;
                                 }
-                                const hitPlayer = players.get(pId);
+                                const hitPlayer = players.get(hitId);
                                 if (hitPlayer) {
                                     hitPlayer.hp -= 5;
                                 }
                                 if (hitPlayer.hp <= 0) {
-                                    broadcast(true, null, { type: "playerDied", died: pId, kill: bullet.playerId });
-                                    const respawnPlayer = players.get(pId);
-                                    respawnPlayer.hp = 100;
-                                    respawnPlayer.x = (respawnPlayer.team === "R") ? 1.25 : 38.25;
-                                    respawnPlayer.y = (respawnPlayer.team === "R") ? 1.25 : 38.25;
-                                    broadcast(true, null, { type: "playerSpawn", player: respawnPlayer });
+                                    broadcast(true, null, { type: "playerDied", died: hitId, kill: bullet.playerId });
+                                    hitPlayer.hp = 100;
+                                    hitPlayer.x = (hit.team === "R") ? 1.25 : 38.25;
+                                    hitPlayer.y = (hit.team === "R") ? 1.25 : 38.25;
+                                    broadcast(true, null, { type: "playerSpawn", player: hitPlayer });
                                 }
                                 bullets.delete(bullet);
                                 broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
-                                broadcast(true, socket, { type: "playerHp", playerId: pId, player: players.get(pId) });
+                                broadcast(true, socket, { type: "playerUpdate", playerId: hitId, player: hitPlayer });
                                 return undefined;
                             }
                         }
