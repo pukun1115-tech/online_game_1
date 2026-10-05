@@ -352,7 +352,7 @@ function processPlayerState(socket, playerId, text) {
                         players.set(pId, players.get(pId).hp - 1);
                         bullets.delete(bullet);
                         broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
-                        broadcast(true, socket, { type: "playerHp", id: pId, player: player });
+                        broadcast(true, socket, { type: "playerHp", id: pId, player: players.get(pId) });
                         return undefined;
                     }
                     broadcast(true, socket, { type: "updateBullet", bullet: bullet });
