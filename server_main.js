@@ -74,14 +74,14 @@ function cbulletcw(nx, ny) {
     for (let y = 0; y < map.length; y++) {
         for (let x = 0; x < map[y].length; x++) {
             if (map[y][x] !== "#") continue;
-            const px = Math.max(Math.min(x + 1, nx + 0.25), x);
-            const py = Math.max(Math.min(y + 1, ny + 0.25), y);
+            const px = Math.max(Math.min(x + 1, nx), x);
+            const py = Math.max(Math.min(y + 1, ny), y);
 
-            const dx = nx + 0.25 - px;
-            const dy = ny + 0.25 - py;
+            const dx = nx - px;
+            const dy = ny - py;
 
             const distance = (dx * dx) + (dy * dy);
-            if (distance < 0.125 * 0.125) {
+            if (distance < 0.0675 * 0.0675) {
                 return true;
             }
         }
@@ -94,7 +94,7 @@ function cbulletcp(nx, ny) {
         const dx = players.get(p).x - nx;
         const dy = players.get(p).y - ny;
         const distance = (dx * dx) + (dy * dy);
-        if (distance < 0.125 + 0.25) {
+        if (distance < 0.0675 + 0.25) {
             return p;
         }
     }
@@ -338,9 +338,9 @@ function processPlayerState(socket, playerId, text) {
                     player.canShoot = true;
                 }, shootCooldown);
                 function updateBullet() {
-                    for (let i = 0; i < 20; i++) {
-                        bullet.x += bullet.directionX * bulletSpeed / 20;
-                        bullet.y += bullet.directionY * bulletSpeed / 20;
+                    for (let i = 0; i < 100; i++) {
+                        bullet.x += bullet.directionX * bulletSpeed / 100;
+                        bullet.y += bullet.directionY * bulletSpeed / 100;
                         if (
                             (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
                             (cbulletcw(bullet.x, bullet.y))
