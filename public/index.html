@@ -122,7 +122,7 @@
                 sendMessage();
             }
         });
-        
+
         const inputState = {
             up: false,
             down: false,
@@ -154,6 +154,7 @@
         let bullets = new Set();
         let playerId = null;
         let map = [];
+        let teamPoint = null;
         window.addEventListener("beforeunload", () => {
             socket.close();
         });
@@ -183,23 +184,34 @@
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === "init") {
-                    playerId = data.id;
+                    playerId = data.playerId;
                     map = data.map;
+                    bullets = new Set(data.bullets);
+                    teamPoint = data.teamPoint;
                     for (const p of data.players) {
                         players.set(p.id, p);
                     }
+                    addMessage("Connected to the server.");
+                    addMessage("Your ID: " + playerId);
+                    addMessage("Your team: " + (players.get(playerId).team === "R" ? "Red" : "Blue"));
                 } else if (data.type === "playerJoined") {
                     players.set(data.player.id, data.player);
-                    addMessage(data.player.id + " joined the game");
+                    addMessage(data.player.id + " joined the game.");
                 } else if (data.type === "playerLeft") {
-                    players.delete(data.id);
-                    addMessage(data.id + " left the game");
+                    players.delete(data.playerId);
+                    addMessage(data.playerId + " left the game.");
                 } else if (data.type === "playerMove") {
                     if (players.get(data.playerId)) {
                         players.set(data.playerId, data.player);
                     }
                 } else if (data.type === "playerHp") {
-                    players.set(data.id, data.player);
+                    players.set(data.playerId, data.player);
+                } else if (data.type === "playerDied") {
+                    addMessage(data.died + " was killed by " + data.kill + ".");
+                } else if (data.type === "playerSpawn") {
+                    players.set(data.player.id, data.player);
+                } else if (data.type === "updateTeamPoint") {
+                    teamPoint = data.teamPoint;
                 } else if (data.type === "chat") {
                     addMessage(data.message);
                 } else if (data.type === "paint") {
@@ -228,7 +240,7 @@
             }
         });
         socket.addEventListener("close", (event) => {
-            addMessage("Disconnected from the server");
+            addMessage("Disconnected from the server.");
             addMessage("Code: " + event.code);
             if (event.reason && event.reason !== "") {
                 addMessage("Reason: " + event.reason);
@@ -236,10 +248,7 @@
         });
         socket.addEventListener("error", (event) => {
             console.log("WebSocketエラー: ", event);
-            addMessage("an error occurred in the WebSocket connection");
-        });
-        socket.addEventListener("open", () => {
-            addMessage("Connected to the server");
+            addMessage("An error has occurred in the WebSocket connection.");
         });
 
         function resizeCanvas() {
@@ -247,9 +256,7 @@
             canvas.height = window.innerHeight;
         }
         window.addEventListener("resize", () => {
-            setTimeout(() => {
-                resizeCanvas();
-            }, 50);
+            setTimeout(() => { resizeCanvas(); }, 50);
         });
         resizeCanvas();
         function draw() {
@@ -276,6 +283,13 @@
                     ctx.fillRect((x - you.x) * 64 + centerX - 1, (y - you.y) * 64 + centerY - 1, 64 + 1, 64 + 1);
                 }
             }
+            for (const b of bullets) {
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = b.bulletTeam === "R" ? "rgba(255, 0, 0, 1)" : "rgba(0, 0, 255, 1)";
+                ctx.beginPath();
+                ctx.arc((b.x - you.x) * 64 + centerX, (b.y - you.y) * 64 + centerY, 4, 0, Math.PI * 2);
+                ctx.stroke();
+            }
             for (const p of players.keys()) {
                 if (players.get(p).team === "B") {
                     ctx.strokeStyle = "rgba(0, 0, 255, 1)";
@@ -287,33 +301,51 @@
                 ctx.arc((players.get(p).x - you.x) * 64 + centerX + 16, (players.get(p).y - you.y) * 64 + centerY + 16, 16, 0, Math.PI * 2);
                 ctx.stroke();
                 if (players.get(p).isShooting) {
-                    ctx.lineWidth = 8;
+                    ctx.lineWidth = 6;
                 }
                 ctx.beginPath();
                 ctx.moveTo((players.get(p).x - you.x) * 64 + centerX + 16, (players.get(p).y - you.y) * 64 + centerY + 16);
                 ctx.lineTo((players.get(p).x - you.x) * 64 + centerX + 16 + players.get(p).directionX * 16, (players.get(p).y - you.y) * 64 + centerY + 16 + players.get(p).directionY * 16);
                 ctx.stroke();
+                if (players.get(p).shooted) {
+                    ctx.fillStyle = "rgba(255, 127, 0, 1)";
+                    ctx.beginPath();
+                    ctx.arc((players.get(p).x - you.x) * 64 + centerX + 16 + players.get(p).directionX * 16, (players.get(p).y - you.y) * 64 + centerY + 16 + players.get(p).directionY * 16, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.strokeStyle = "rgba(255, 255, 255, 1)";
+                ctx.lineWidth = 1;
+                ctx.strokeRect((players.get(p).x - you.x) * 64 + centerX, (players.get(p).y - you.y) * 64 + centerY - 16, 32, 8);
+                if (players.get(p).hp >= 80) {
+                    ctx.fillStyle = "rgba(0, 255, 0, 0.5)";
+                } else if (players.get(p).hp >= 30) {
+                    ctx.fillStyle = "rgba(255, 255, 0, 0.5)";
+                } else {
+                    ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
+                }
+                const hpWidth = Math.max(0, Math.min(32, (players.get(p).hp / 100) * 32));
+                ctx.fillRect((players.get(p).x - you.x) * 64 + centerX, (players.get(p).y - you.y) * 64 + centerY - 16, hpWidth, 8);
             }
-            for (const b of bullets) {
-                ctx.fillStyle = b.bulletTeam === "R" ? "rgba(255, 0, 0, 1)" : "rgba(0, 0, 255, 1)";
-                ctx.beginPath();
-                ctx.arc((b.x - you.x) * 64 + centerX, (b.y - you.y) * 64 + centerY, 4, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "rgba(255, 255, 255, 1)";
-            ctx.font = "32px sans-serif";
-            ctx.textAlign = "left";
-            ctx.textBaseline = "top";
-            ctx.strokeText("HP: " + players.get(playerId).hp, 16, 16);
+            ctx.font = "24px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            ctx.fillStyle = "rgba(255, 0, 0, 1)";
+            ctx.fillRect(centerX - 56, 12, 48, 24);
+            ctx.fillStyle = "rgba(0, 0, 255, 1)";
+            ctx.fillRect(centerX + 8, 12, 48, 24);
+
+            ctx.fillStyle = "rgba(255, 255, 255, 1)";
+            ctx.fillText(teamPoint.R, centerX - 32, 24);
+            ctx.fillText(teamPoint.B, centerX + 32, 24);
         }
         function keysInput() {
             if (document.activeElement !== messageInput) {
-                inputState.up = (keys["KeyW"] || keys["ArrowUp"]);
-                inputState.down = (keys["KeyS"] || keys["ArrowDown"]);
-                inputState.left = (keys["KeyA"] || keys["ArrowLeft"]);
-                inputState.right = (keys["KeyD"] || keys["ArrowRight"]);
-                inputState.isPainting = (keys["ShiftLeft"] || keys["ShiftRight"] || keys["Space"]);
+                inputState.up = (keys["KeyW"] || keys["KeyI"] || keys["ArrowUp"]);
+                inputState.down = (keys["KeyS"] || keys["KeyK"] || keys["ArrowDown"]);
+                inputState.left = (keys["KeyA"] || keys["KeyJ"] || keys["ArrowLeft"]);
+                inputState.right = (keys["KeyD"] || keys["KeyL"] || keys["ArrowRight"]);
+                inputState.isPainting = (keys["ShiftLeft"] || keys["KeyG"] || keys["Space"]);
             }
         }
         function sendState() {
@@ -343,7 +375,7 @@
             draw();
             keysInput();
             sendState();
-            requestAnimationFrame(mainLoop);
+            setTimeout(mainLoop, 1000 / 60);
         }
         mainLoop();
     </script>
