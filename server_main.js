@@ -70,7 +70,7 @@ function checkPlayerCollision(nx, ny) {
     return false;
 }
 
-function cbulletc() {
+function cbulletc(nx, ny) {
     for (let y = 0; y < map.length; y++) {
         for (let x = 0; x < map[y].length; x++) {
             if (map[y][x] !== "#") continue;
