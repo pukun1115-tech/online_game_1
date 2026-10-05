@@ -329,7 +329,7 @@ function processPlayerState(socket, playerId, text) {
                     bullet.y += bullet.directionY * bulletSpeed;
                     if (
                         (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
-                        (culletc(bullet.x, bullet.y))
+                        (cbulletc(bullet.x, bullet.y))
                     ) {
                         bullets.delete(bullet);
                         broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
