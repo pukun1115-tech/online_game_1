@@ -339,9 +339,9 @@ function processPlayerState(socket, playerId, text) {
                     player.canShoot = true;
                 }, shootCooldown);
                 function updateBullet() {
-                    for (let i = 0; i < 400; i++) {
-                        bullet.x += bullet.directionX * bulletSpeed / 400;
-                        bullet.y += bullet.directionY * bulletSpeed / 400;
+                    for (let i = 0; i < 10; i++) {
+                        bullet.x += bullet.directionX * bulletSpeed / 10;
+                        bullet.y += bullet.directionY * bulletSpeed / 10;
                         if (
                             (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
                             (checkBulletWallCollision(bullet.x, bullet.y))
