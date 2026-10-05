@@ -313,6 +313,7 @@ function processPlayerState(socket, playerId, text) {
                 player.directionY = obj.state.directionY;
             }
             broadcast(true, socket, { type: "playerUpdate", playerId: playerId, player: player });
+            //いろぬり
             if (obj.state.isPainting) {
                 const enemyTeam = { R: "B", B: "R" };
                 const newChar = player.team;
@@ -329,6 +330,12 @@ function processPlayerState(socket, playerId, text) {
                     broadcast(true, socket, { type: "paint", paintedY: paintingY, str: str });
                 }
             }
+            //Hp回復
+            if (player.hpTime <= 0) {
+                player.hp = Math.min(player.hp + 1, 100);
+                player.hpTime = 500;
+            }
+            //撃つ
             player.isShooting = obj.state.isShooting;
             if (obj.state.isShooting) {
                 if (player.canShoot) {
@@ -451,6 +458,7 @@ server.on("upgrade", (request, socket, head) => {
     const newPlayer = {
         id: playerId,
         hp: 100,
+        hpTime: 500,
         x: (playerTeam === "R") ? 1.25 : 38.25,
         y: (playerTeam === "R") ? 1.25 : 38.25,
         team: playerTeam,
@@ -465,7 +473,9 @@ server.on("upgrade", (request, socket, head) => {
     playerCount[playerTeam] += 1;
     sendTextFrame(socket, JSON.stringify({ type: "init", playerId: playerId, map: map, players: Array.from(players.values()), bullets: Array.from(bullets), teamPoint: teamPoint }));
     broadcast(false, socket, { type: "playerJoined", player: newPlayer });
-
+    setTimeout(() => {
+        players.get(playerId).hpTime -= 1;
+    }, (1000 / 60));
     let receiveBuffer = Buffer.alloc(0);
     socket.on("data", (data) => {
         if (receiveBuffer === null) {
