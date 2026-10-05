@@ -70,7 +70,7 @@ function checkPlayerCollision(nx, ny) {
     return false;
 }
 
-function cbulletc(nx, ny) {
+function cbulletcw(nx, ny) {
     for (let y = 0; y < map.length; y++) {
         for (let x = 0; x < map[y].length; x++) {
             if (map[y][x] !== "#") continue;
@@ -87,6 +87,18 @@ function cbulletc(nx, ny) {
         }
     }
     return false;
+}
+
+function cbulletcp(nx, ny) {
+    for (const p of players.keys()) {
+        const dx = p.x - nx;
+        const dy = p.y - ny;
+        const distance = (dx * dx) * (dy * dy);
+        if (distance < 0.125 + 0.25) {
+            return p;
+        }
+    }
+    return null;
 }
 
 function broadcast(all, socket, message) {
@@ -329,10 +341,18 @@ function processPlayerState(socket, playerId, text) {
                     bullet.y += bullet.directionY * bulletSpeed;
                     if (
                         (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
-                        (cbulletc(bullet.x, bullet.y))
+                        (cbulletcw(bullet.x, bullet.y))
                     ) {
                         bullets.delete(bullet);
                         broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
+                        return undefined;
+                    }
+                    if (cbulletcp(bullet.x, bullet.y)) {
+                        const pId = cbulletcp(bullet.x, bullet.y);
+                        players.set(pId, players.get(pId).hp - 1);
+                        bullets.delete(bullet);
+                        broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
+                        broadcast(true, socket, { type: "playerHp", id: pId, player: player });
                         return undefined;
                     }
                     broadcast(true, socket, { type: "updateBullet", bullet: bullet });
