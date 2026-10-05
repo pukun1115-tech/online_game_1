@@ -93,7 +93,7 @@ function cbulletcp(nx, ny) {
     for (const p of players.keys()) {
         const dx = players.get(p).x - nx;
         const dy = players.get(p).y - ny;
-        const distance = (dx * dx) * (dy * dy);
+        const distance = (dx * dx) + (dy * dy);
         if (distance < 0.125 + 0.25) {
             return p;
         }
@@ -350,10 +350,13 @@ function processPlayerState(socket, playerId, text) {
                         }
                         if (cbulletcp(bullet.x, bullet.y)) {
                             const pId = cbulletcp(bullet.x, bullet.y);
-                            players.set(pId, players.get(pId).hp - 1);
+                            const hitPlayer = players.get(pId);
+                            if (hitPlayer) {
+                                hitPlayer.hp -= 1;
+                            }
                             bullets.delete(bullet);
                             broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
-                            broadcast(true, socket, { type: "playerHp", playerId: pId, player: players.get(pId) });
+                            broadcast(true, socket, { type: "playerHp", id: pId, player: players.get(pId) });
                             return undefined;
                         }
                     }
