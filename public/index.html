@@ -189,15 +189,17 @@
                         players.set(p.id, p);
                     }
                 } else if (data.type === "playerJoined") {
-                    players.set(data.player.id, { x: data.player.x, y: data.player.y, team: data.player.team });
+                    players.set(data.player.id, data.player);
                     addMessage(data.player.id + " joined the game");
                 } else if (data.type === "playerLeft") {
                     players.delete(data.id);
                     addMessage(data.id + " left the game");
-                } else if (data.type == "playerMove") {
+                } else if (data.type === "playerMove") {
                     if (players.get(data.playerId)) {
                         players.set(data.playerId, data.player);
                     }
+                } else if (data.type === "playerHp") {
+                    players.set(data.id, data.player);
                 } else if (data.type === "chat") {
                     addMessage(data.message);
                 } else if (data.type === "paint") {
@@ -298,6 +300,9 @@
                 ctx.arc((b.x - you.x) * 32 + centerX, (b.y - you.y) * 32 + centerY, 4, 0, Math.PI * 2);
                 ctx.fill();
             }
+            ctx.strokeStyle = "rgba(255, 255, 255, 1)";
+            ctx.font = "32px sans-serif";
+            ctx.strokeText("HP: " + players.get(playerId).hp, 16, 16);
         }
         function keysInput() {
             if (document.activeElement !== messageInput) {
