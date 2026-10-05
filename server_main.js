@@ -51,18 +51,29 @@ const map = [
     "########################################",
 ];
 
+function checkCircleRectCollision(circle, rect) {
+    const px = Math.max(Math.min(circle.x, rect.right), rect.left);
+    const py = Math.max(Math.min(circle.y, rect.down), rect.up)
+
+    const dx = Math.abs(circle.x - px);
+    const dy = Math.abs(circle.y - py);
+
+    const distance = (dx * dx) + (dy * dy);
+    return (distance < circle.r * circle.r);
+}
+
+function checkCircleCircleCollision(circle1, circle2) {
+    const dx = circle1.x - circle2.x;
+    const dy = circle1.y - circle2.y;
+    const distance = (dx * dx) + (dy * dy);
+    return (distance < (circle1.r + circle2.r) * (circle1.r + circle2.r));
+}
+
 function checkPlayerCollision(nx, ny) {
     for (let y = 0; y < map.length; y++) {
         for (let x = 0; x < map[y].length; x++) {
             if (map[y][x] !== "#") continue;
-            const px = Math.max(Math.min(x + 1, nx + 0.25), x);
-            const py = Math.max(Math.min(y + 1, ny + 0.25), y);
-
-            const dx = nx + 0.25 - px;
-            const dy = ny + 0.25 - py;
-
-            const distance = (dx * dx) + (dy * dy);
-            if (distance < 0.25 * 0.25) {
+            if (checkCircleRectCollision({ x: (nx + 0.25) * 4, y: (ny + 0.25) * 4, r: 0.25 * 4 }, { left: x * 4, right: (x + 1) * 4, up: y * 4, down: (y + 1) * 4 })) {
                 return true;
             }
         }
@@ -70,18 +81,11 @@ function checkPlayerCollision(nx, ny) {
     return false;
 }
 
-function cbulletcw(nx, ny) {
+function checkBulletWallCollision(nx, ny) {
     for (let y = 0; y < map.length; y++) {
         for (let x = 0; x < map[y].length; x++) {
             if (map[y][x] !== "#") continue;
-            const px = Math.max(Math.min(x + 1, nx), x);
-            const py = Math.max(Math.min(y + 1, ny), y);
-
-            const dx = nx - px;
-            const dy = ny - py;
-
-            const distance = (dx * dx) + (dy * dy);
-            if (distance < 0.0675 * 0.0675) {
+            if (checkCircleRectCollision({ x: nx * 16, y: ny * 16, r: 0.0625 * 16 }, { left: x * 16, right: (x + 1) * 16, up: y * 16, down: (y + 1) * 16 })) {
                 return true;
             }
         }
@@ -89,27 +93,18 @@ function cbulletcw(nx, ny) {
     return false;
 }
 
-function cbulletcp(nx, ny) {
+function checkBulletPlayerCollision(nx, ny) {
     for (const p of players.keys()) {
-        const dx = players.get(p).x - nx;
-        const dy = players.get(p).y - ny;
-        const distance = (dx * dx) + (dy * dy);
-        if (distance < 0.0675 + 0.25) {
+        if (checkCircleCircleCollision({ x: nx * 16, y: ny * 16, r: 0.0625 * 16 }, { x: (players.get(p).x + 0.25) * 16, y: (players.get(p).y + 0.25) * 16, r: 0.25 * 16 })) {
             return p;
         }
     }
     return null;
 }
 
-function broadcast(all, socket, message) {
-    const text = JSON.stringify(message);
-
-    for (const client of sockets) {
-        if (all || client !== socket) {
-            sendTextFrame(client, text);
-        }
-    }
-}
+//
+//
+//
 
 function cleanupSocket(socket) {
     sockets.delete(socket);
@@ -122,9 +117,15 @@ function cleanupSocket(socket) {
     broadcast(false, socket, { type: "playerLeft", id: playerId });
 }
 
-//
-//
-//
+function broadcast(all, socket, message) {
+    const text = JSON.stringify(message);
+
+    for (const client of sockets) {
+        if (all || client !== socket) {
+            sendTextFrame(client, text);
+        }
+    }
+}
 
 function sendTextFrame(socket, text) {
     const payload = Buffer.from(text, "utf8");
@@ -338,19 +339,19 @@ function processPlayerState(socket, playerId, text) {
                     player.canShoot = true;
                 }, shootCooldown);
                 function updateBullet() {
-                    for (let i = 0; i < 100; i++) {
-                        bullet.x += bullet.directionX * bulletSpeed / 100;
-                        bullet.y += bullet.directionY * bulletSpeed / 100;
+                    for (let i = 0; i < 400; i++) {
+                        bullet.x += bullet.directionX * bulletSpeed / 400;
+                        bullet.y += bullet.directionY * bulletSpeed / 400;
                         if (
                             (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
-                            (cbulletcw(bullet.x, bullet.y))
+                            (checkBulletWallCollision(bullet.x, bullet.y))
                         ) {
                             bullets.delete(bullet);
                             broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
                             return undefined;
                         }
-                        if (cbulletcp(bullet.x, bullet.y)) {
-                            const pId = cbulletcp(bullet.x, bullet.y);
+                        if (checkBulletPlayerCollision(bullet.x, bullet.y)) {
+                            const pId = checkBulletPlayerCollision(bullet.x, bullet.y);
                             if (players.get(pId).team === bullet.bulletTeam) {
                                 continue;
                             }
@@ -415,7 +416,7 @@ server.on("upgrade", (request, socket, head) => {
         "\r\n"
     );
     socket.write(response);
-    
+
     sockets.add(socket);
     function createPlayerId() {
         const f = Math.random().toString(36).substring(2, 2 + 6);
