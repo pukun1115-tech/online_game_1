@@ -91,8 +91,8 @@ function cbulletcw(nx, ny) {
 
 function cbulletcp(nx, ny) {
     for (const p of players.keys()) {
-        const dx = p.x - nx;
-        const dy = p.y - ny;
+        const dx = player.get(p).x - nx;
+        const dy = player.get(p).y - ny;
         const distance = (dx * dx) * (dy * dy);
         if (distance < 0.125 + 0.25) {
             return p;
@@ -337,23 +337,25 @@ function processPlayerState(socket, playerId, text) {
                     player.canShoot = true;
                 }, shootCooldown);
                 function updateBullet() {
-                    bullet.x += bullet.directionX * bulletSpeed;
-                    bullet.y += bullet.directionY * bulletSpeed;
-                    if (
-                        (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
-                        (cbulletcw(bullet.x, bullet.y))
-                    ) {
-                        bullets.delete(bullet);
-                        broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
-                        return undefined;
-                    }
-                    if (cbulletcp(bullet.x, bullet.y)) {
-                        const pId = cbulletcp(bullet.x, bullet.y);
-                        players.set(pId, players.get(pId).hp - 1);
-                        bullets.delete(bullet);
-                        broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
-                        broadcast(true, socket, { type: "playerHp", playerId: pId, player: players.get(pId) });
-                        return undefined;
+                    for (int i = 0; i < 20; i++) {
+                        bullet.x += bullet.directionX * bulletSpeed / 20;
+                        bullet.y += bullet.directionY * bulletSpeed / 20;
+                        if (
+                            (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
+                            (cbulletcw(bullet.x, bullet.y))
+                        ) {
+                            bullets.delete(bullet);
+                            broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
+                            return undefined;
+                        }
+                        if (cbulletcp(bullet.x, bullet.y)) {
+                            const pId = cbulletcp(bullet.x, bullet.y);
+                            players.set(pId, players.get(pId).hp - 1);
+                            bullets.delete(bullet);
+                            broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
+                            broadcast(true, socket, { type: "playerHp", playerId: pId, player: players.get(pId) });
+                            return undefined;
+                        }
                     }
                     broadcast(true, socket, { type: "updateBullet", bullet: bullet });
                     setTimeout(() => updateBullet(), 20);
