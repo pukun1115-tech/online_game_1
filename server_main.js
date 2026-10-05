@@ -317,58 +317,55 @@ function processPlayerState(socket, playerId, text) {
                 }
             }
             if (obj.state.isShooting) {
-                if (!player.canShoot) {
-                    return undefined;
-                }
-                const bullet = {
-                    playerId: playerId,
-                    bulletId: crypto.randomUUID(),
-                    bulletTeam: player.team,
-                    x: player.x + 0.25,
-                    y: player.y + 0.25,
-                    directionX: player.directionX,
-                    directionY: player.directionY,
-                    hitPlayers: []
-                };
-                bullets.add(bullet);
-                broadcast(true, socket, { type: "addBullet", bullet: bullet });
-                const shootCooldown = 200;
-                const bulletSpeed = 0.5;
-                player.canShoot = false;
-                setTimeout(() => {
-                    player.canShoot = true;
-                }, shootCooldown);
-                function updateBullet() {
-                    for (let i = 0; i < 10; i++) {
-                        bullet.x += bullet.directionX * bulletSpeed / 10;
-                        bullet.y += bullet.directionY * bulletSpeed / 10;
-                        if (
-                            (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
-                            (checkBulletWallCollision(bullet.x, bullet.y))
-                        ) {
-                            bullets.delete(bullet);
-                            broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
-                            return undefined;
-                        }
-                        if (checkBulletPlayerCollision(bullet.x, bullet.y)) {
+                if (player.canShoot) {
+                    const bullet = {
+                        playerId: playerId,
+                        bulletTeam: player.team,
+                        x: player.x + 0.25,
+                        y: player.y + 0.25,
+                        directionX: player.directionX,
+                        directionY: player.directionY,
+                    };
+                    bullets.add(bullet);
+                    broadcast(true, socket, { type: "addBullet", bullet: bullet });
+                    const shootCooldown = 200;
+                    const bulletSpeed = 0.5;
+                    player.canShoot = false;
+                    setTimeout(() => {
+                        player.canShoot = true;
+                    }, shootCooldown);
+                    function updateBullet() {
+                        for (let i = 0; i < 10; i++) {
+                            bullet.x += bullet.directionX * bulletSpeed / 10;
+                            bullet.y += bullet.directionY * bulletSpeed / 10;
+                            if (
+                                (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
+                                (checkBulletWallCollision(bullet.x, bullet.y))
+                            ) {
+                                bullets.delete(bullet);
+                                broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
+                                return undefined;
+                            }
                             const pId = checkBulletPlayerCollision(bullet.x, bullet.y);
-                            if (players.get(pId).team === bullet.bulletTeam) {
-                                continue;
+                            if (pId !== null) {
+                                if (players.get(pId).team === bullet.bulletTeam) {
+                                    continue;
+                                }
+                                const hitPlayer = players.get(pId);
+                                if (hitPlayer) {
+                                    hitPlayer.hp -= 1;
+                                }
+                                bullets.delete(bullet);
+                                broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
+                                broadcast(true, socket, { type: "playerHp", id: pId, player: players.get(pId) });
+                                return undefined;
                             }
-                            const hitPlayer = players.get(pId);
-                            if (hitPlayer) {
-                                hitPlayer.hp -= 1;
-                            }
-                            bullets.delete(bullet);
-                            broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
-                            broadcast(true, socket, { type: "playerHp", id: pId, player: players.get(pId) });
-                            return undefined;
                         }
+                        broadcast(true, socket, { type: "updateBullet", bullet: bullet });
+                        setTimeout(() => updateBullet(), 20);
                     }
-                    broadcast(true, socket, { type: "updateBullet", bullet: bullet });
                     setTimeout(() => updateBullet(), 20);
                 }
-                setTimeout(() => updateBullet(), 20);
             }
         } else if (obj.type === "chat") {
             broadcast(true, socket, { type: "chat", message: `${playerId}: ${obj.message}` });
