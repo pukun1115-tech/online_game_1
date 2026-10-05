@@ -285,7 +285,10 @@ function processPlayerState(socket, playerId, text) {
                 socket.destroy();
                 return null;
             }
-            const moveSpeed = 0.1;
+            //今いるタイル
+            const paintingX = Math.floor(player.x + 0.25);
+            const paintingY = Math.floor(player.y + 0.25);
+            //移動
             const moveX = Number(obj.state.right === true) - Number(obj.state.left === true);
             const moveY = Number(obj.state.down === true) - Number(obj.state.up === true);
             const moveLength = Math.hypot(moveX, moveY);
@@ -293,6 +296,7 @@ function processPlayerState(socket, playerId, text) {
                 const normalizedMoveX = moveX / moveLength;
                 const normalizedMoveY = moveY / moveLength;
                 for (let i = 0; i < 5; i++) {
+                    const moveSpeed = (map[paintingY][paintingX] === ".") ? 1 : ((map[paintingY][paintingX] === player.team) ? 1.5 : 0.8);
                     const nextX = player.x + (normalizedMoveX * moveSpeed) / 5;
                     const nextY = player.y + (normalizedMoveY * moveSpeed) / 5;
                     if (!checkPlayerCollision(nextX, player.y)) {
@@ -303,15 +307,13 @@ function processPlayerState(socket, playerId, text) {
                     }
                 }
             }
+            //方向
             if (!Number.isNaN(obj.state.directionX) && !Number.isNaN(obj.state.directionY)) {
                 player.directionX = obj.state.directionX;
                 player.directionY = obj.state.directionY;
             }
             broadcast(true, socket, { type: "playerMove", playerId: playerId, player: player });
             if (obj.state.isPainting) {
-                const paintingX = Math.floor(player.x + 0.25);
-                const paintingY = Math.floor(player.y + 0.25);
-
                 const enemyTeam = { R: "B", B: "R" };
                 const newChar = player.team;
                 if (map[paintingY][paintingX] === ".") {
