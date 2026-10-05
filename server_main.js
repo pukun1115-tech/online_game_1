@@ -91,8 +91,8 @@ function cbulletcw(nx, ny) {
 
 function cbulletcp(nx, ny) {
     for (const p of players.keys()) {
-        const dx = player.get(p).x - nx;
-        const dy = player.get(p).y - ny;
+        const dx = players.get(p).x - nx;
+        const dy = players.get(p).y - ny;
         const distance = (dx * dx) * (dy * dy);
         if (distance < 0.125 + 0.25) {
             return p;
