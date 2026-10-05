@@ -302,6 +302,8 @@
             }
             ctx.strokeStyle = "rgba(255, 255, 255, 1)";
             ctx.font = "32px sans-serif";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
             ctx.strokeText("HP: " + players.get(playerId).hp, 16, 16);
         }
         function keysInput() {
