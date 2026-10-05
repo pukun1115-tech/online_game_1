@@ -326,7 +326,8 @@ function processPlayerState(socket, playerId, text) {
                     x: player.x + 0.25,
                     y: player.y + 0.25,
                     directionX: player.directionX,
-                    directionY: player.directionY
+                    directionY: player.directionY,
+                    hitPlayers: []
                 };
                 bullets.add(bullet);
                 broadcast(true, socket, { type: "addBullet", bullet: bullet });
@@ -350,6 +351,9 @@ function processPlayerState(socket, playerId, text) {
                         }
                         if (cbulletcp(bullet.x, bullet.y)) {
                             const pId = cbulletcp(bullet.x, bullet.y);
+                            if (players.get(pId).team === bullet.team) {
+                                continue;
+                            }
                             const hitPlayer = players.get(pId);
                             if (hitPlayer) {
                                 hitPlayer.hp -= 1;
