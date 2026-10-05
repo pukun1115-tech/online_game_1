@@ -70,6 +70,25 @@ function checkPlayerCollision(nx, ny) {
     return false;
 }
 
+function cbulletc() {
+    for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < map[y].length; x++) {
+            if (map[y][x] !== "#") continue;
+            const px = Math.max(Math.min(x + 1, nx + 0.25), x);
+            const py = Math.max(Math.min(y + 1, ny + 0.25), y);
+
+            const dx = nx + 0.25 - px;
+            const dy = ny + 0.25 - py;
+
+            const distance = (dx * dx) + (dy * dy);
+            if (distance < 0.125 * 0.125) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 function broadcast(all, socket, message) {
     const text = JSON.stringify(message);
 
@@ -268,8 +287,10 @@ function processPlayerState(socket, playerId, text) {
                     }
                 }
             }
-            player.directionX = obj.state.directionX;
-            player.directionY = obj.state.directionY;
+            if (!Number.isNaN(obj.state.directionX) && !Number.isNaN(obj.state.directionY)) {
+                player.directionX = obj.state.directionX;
+                player.directionY = obj.state.directionY;
+            }
             broadcast(true, socket, { type: "playerMove", playerId: playerId, player: player });
             if (obj.state.isPainting) {
                 const paintingX = Math.floor(player.x + 0.25);
@@ -306,7 +327,10 @@ function processPlayerState(socket, playerId, text) {
                 function updateBullet() {
                     bullet.x += bullet.directionX * bulletSpeed;
                     bullet.y += bullet.directionY * bulletSpeed;
-                    if (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) {
+                    if (
+                        (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
+                        (culletc(bullet.x, bullet.y))
+                    ) {
                         bullets.delete(bullet);
                         broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
                         return undefined;
