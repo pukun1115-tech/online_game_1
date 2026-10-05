@@ -297,7 +297,7 @@
             for (const b of bullets) {
                 ctx.fillStyle = b.bulletTeam === "R" ? "rgba(255, 0, 0, 1)" : "rgba(0, 0, 255, 1)";
                 ctx.beginPath();
-                ctx.arc((b.x - you.x) * 32 + centerX, (b.y - you.y) * 32 + centerY, 4, 0, Math.PI * 2);
+                ctx.arc((b.x - you.x) * 32 + centerX, (b.y - you.y) * 32 + centerY, 2, 0, Math.PI * 2);
                 ctx.fill();
             }
             ctx.strokeStyle = "rgba(255, 255, 255, 1)";
