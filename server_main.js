@@ -351,7 +351,7 @@ function processPlayerState(socket, playerId, text) {
                         }
                         if (cbulletcp(bullet.x, bullet.y)) {
                             const pId = cbulletcp(bullet.x, bullet.y);
-                            if (players.get(pId).team === bullet.team) {
+                            if (players.get(pId).team === bullet.bulletTeam) {
                                 continue;
                             }
                             const hitPlayer = players.get(pId);
