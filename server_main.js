@@ -341,7 +341,7 @@ function processPlayerState(socket, playerId, text) {
             }
             broadcast(true, null, { type: "playerUpdate", playerId: player.id, player: player });
             //撃つ
-            player.isShooting = obj.state.isShooting;
+            player.isShooting = (obj.state.isShooting === true);
             if (obj.state.isShooting) {
                 if (player.canShoot) {
                     const bullet = {
