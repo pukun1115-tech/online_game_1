@@ -201,13 +201,9 @@
                     } else if (data.type === "playerLeft") {
                         players.delete(data.playerId);
                         addMessage(data.playerId + " left the game.");
-                    } else if (data.type === "playerMove") {
-                        if (players.get(data.playerId)) {
-                            players.set(data.playerId, data.player);
-                        }
-                    } else if (data.type === "playerHp") {
+                    } else if (data.type === "playerUpdate") {
                         players.set(data.playerId, data.player);
-                    } else if (data.type === "playerDied") {
+                    }  else if (data.type === "playerDied") {
                         addMessage(data.died + " was killed by " + data.kill + ".");
                     } else if (data.type === "playerSpawn") {
                         players.set(data.player.id, data.player);

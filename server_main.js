@@ -10,6 +10,10 @@ const playerIds = new Map();
 const bullets = new Set();
 const playerCount = { R: 0, B: 0 };
 const teamPoint = { R: 0, B: 0 };
+let time = 0;
+setInterval(() => {
+    time++;
+}, (1000 / 60));
 
 const map = [
     "########################################",
@@ -285,9 +289,13 @@ function processPlayerState(socket, playerId, text) {
                 socket.destroy();
                 return null;
             }
-            const moveSpeed = 0.1;
+            //今いるタイル
+            const paintingX = Math.floor(player.x + 0.25);
+            const paintingY = Math.floor(player.y + 0.25);
+            //移動
             const moveX = Number(obj.state.right === true) - Number(obj.state.left === true);
             const moveY = Number(obj.state.down === true) - Number(obj.state.up === true);
+            const moveSpeed = (map[paintingY][paintingX] === ".") ? 0.06 : ((map[paintingY][paintingX] === player.team) ? 0.08 : 0.04);
             const moveLength = Math.hypot(moveX, moveY);
             if (moveLength > 0) {
                 const normalizedMoveX = moveX / moveLength;
@@ -303,15 +311,14 @@ function processPlayerState(socket, playerId, text) {
                     }
                 }
             }
+            //方向
             if (!Number.isNaN(obj.state.directionX) && !Number.isNaN(obj.state.directionY)) {
                 player.directionX = obj.state.directionX;
                 player.directionY = obj.state.directionY;
             }
-            broadcast(true, socket, { type: "playerMove", playerId: playerId, player: player });
+            broadcast(true, null, { type: "playerUpdate", playerId: playerId, player: player });
+            //いろぬり
             if (obj.state.isPainting) {
-                const paintingX = Math.floor(player.x + 0.25);
-                const paintingY = Math.floor(player.y + 0.25);
-
                 const enemyTeam = { R: "B", B: "R" };
                 const newChar = player.team;
                 if (map[paintingY][paintingX] === ".") {
@@ -320,14 +327,21 @@ function processPlayerState(socket, playerId, text) {
                     teamPoint[enemyTeam[player.team]] -= 1;
                     teamPoint[player.team] += 1;
                 }
-                broadcast(true, socket, { type: "updateTeamPoint", teamPoint: teamPoint });
+                broadcast(true, null, { type: "updateTeamPoint", teamPoint: teamPoint });
                 if (map[paintingY][paintingX] !== newChar) {
                     const str = map[paintingY].slice(0, paintingX) + newChar + map[paintingY].slice(paintingX + 1);
                     map[paintingY] = str;
-                    broadcast(true, socket, { type: "paint", paintedY: paintingY, str: str });
+                    broadcast(true, null, { type: "paint", paintedY: paintingY, str: str });
                 }
             }
-            player.isShooting = obj.state.isShooting;
+            //Hp回復
+            if (player.hpTime + 60 <= time) {
+                player.hp = Math.min(player.hp + 1, 100);
+                player.hpTime = time;
+            }
+            broadcast(true, null, { type: "playerUpdate", playerId: player.id, player: player });
+            //撃つ
+            player.isShooting = (obj.state.isShooting === true);
             if (obj.state.isShooting) {
                 if (player.canShoot) {
                     const bullet = {
@@ -340,13 +354,13 @@ function processPlayerState(socket, playerId, text) {
                         directionY: player.directionY,
                     };
                     bullets.add(bullet);
-                    broadcast(true, socket, { type: "addBullet", bullet: bullet });
+                    broadcast(true, null, { type: "addBullet", bullet: bullet });
                     const shootCooldown = 200;
                     const bulletSpeed = 0.8;
                     player.canShoot = false;
                     setTimeout(() => { player.canShoot = true; }, shootCooldown);
                     player.shooted = true;
-                    setTimeout(() => { player.shooted = false; }, shootCooldown / 2);
+                    setTimeout(() => { player.shooted = false; }, shootCooldown / 3);
                     function updateBullet() {
                         for (let i = 0; i < 50; i++) {
                             bullet.x += bullet.directionX * bulletSpeed / 50;
@@ -356,40 +370,39 @@ function processPlayerState(socket, playerId, text) {
                                 (checkBulletWallCollision(bullet.x, bullet.y))
                             ) {
                                 bullets.delete(bullet);
-                                broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
+                                broadcast(true, null, { type: "deleteBullet", bullet: bullet });
                                 return undefined;
                             }
-                            const pId = checkBulletPlayerCollision(bullet.x, bullet.y);
-                            if (pId !== null) {
-                                if (players.get(pId).team === bullet.bulletTeam) {
+                            const hitId = checkBulletPlayerCollision(bullet.x, bullet.y);
+                            if (hitId !== null) {
+                                if (players.get(hitId).team === bullet.bulletTeam) {
                                     continue;
                                 }
-                                const hitPlayer = players.get(pId);
+                                const hitPlayer = players.get(hitId);
                                 if (hitPlayer) {
                                     hitPlayer.hp -= 5;
                                 }
                                 if (hitPlayer.hp <= 0) {
-                                    broadcast(true, null, { type: "playerDied", died: pId, kill: bullet.playerId });
-                                    const respawnPlayer = players.get(pId);
-                                    respawnPlayer.hp = 100;
-                                    respawnPlayer.x = (respawnPlayer.team === "R") ? 1.25 : 38.25;
-                                    respawnPlayer.y = (respawnPlayer.team === "R") ? 1.25 : 38.25;
-                                    broadcast(true, null, { type: "playerSpawn", player: respawnPlayer });
+                                    broadcast(true, null, { type: "playerDied", died: hitId, kill: bullet.playerId });
+                                    hitPlayer.hp = 100;
+                                    hitPlayer.x = (hitPlayer.team === "R") ? 1.25 : 38.25;
+                                    hitPlayer.y = (hitPlayer.team === "R") ? 1.25 : 38.25;
+                                    broadcast(true, null, { type: "playerSpawn", player: hitPlayer });
                                 }
                                 bullets.delete(bullet);
-                                broadcast(true, socket, { type: "deleteBullet", bullet: bullet });
-                                broadcast(true, socket, { type: "playerHp", playerId: pId, player: players.get(pId) });
+                                broadcast(true, null, { type: "deleteBullet", bullet: bullet });
+                                broadcast(true, null, { type: "playerUpdate", playerId: hitId, player: hitPlayer });
                                 return undefined;
                             }
                         }
-                        broadcast(true, socket, { type: "updateBullet", bullet: bullet });
+                        broadcast(true, null, { type: "updateBullet", bullet: bullet });
                         setTimeout(() => updateBullet(), (1000 / 60));
                     }
                     setTimeout(() => updateBullet(), (1000 / 60));
                 }
             }
         } else if (obj.type === "chat") {
-            broadcast(true, socket, { type: "chat", message: `${playerId}: ${obj.message}` });
+            broadcast(true, null, { type: "chat", message: `${playerId}: ${obj.message}` });
         }
     } catch (error) {
         socket.destroy();
@@ -450,6 +463,7 @@ server.on("upgrade", (request, socket, head) => {
     const newPlayer = {
         id: playerId,
         hp: 100,
+        hpTime: -60,
         x: (playerTeam === "R") ? 1.25 : 38.25,
         y: (playerTeam === "R") ? 1.25 : 38.25,
         team: playerTeam,
@@ -464,7 +478,6 @@ server.on("upgrade", (request, socket, head) => {
     playerCount[playerTeam] += 1;
     sendTextFrame(socket, JSON.stringify({ type: "init", playerId: playerId, map: map, players: Array.from(players.values()), bullets: Array.from(bullets), teamPoint: teamPoint }));
     broadcast(false, socket, { type: "playerJoined", player: newPlayer });
-
     let receiveBuffer = Buffer.alloc(0);
     socket.on("data", (data) => {
         if (receiveBuffer === null) {
