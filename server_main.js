@@ -3,17 +3,19 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const PORT = process.env.PORT || 3000;
-
 const MAX_BUFFER_SIZE = 512 * 512;
+
 const PLAYER_MAX_HP = 100;
 const PLAYER_HP_COOLDOWN = 60;
-const TILE_SIZE = 64;
-const PLAYER_RADIUS = 16;
-const BULLET_RADIUS = 4;
+const PLAYER_RECOVER_HP = 1;
+const TILE_SIZE = 1;
+const PLAYER_RADIUS = 0.25;
+const BULLET_RADIUS = 0.0625;
 const ENEMY_TEAM = { R: "B", B: "R" };
 const SHOOT_COOLDOWN = 200;
 const BULLET_SPEED = 0.8;
 const BULLET_DAMAGE = 5;
+
 const sockets = new Set();
 const players = new Map();
 const playerIds = new Map();
@@ -134,7 +136,7 @@ function cleanupSocket(socket) {
     sockets.delete(socket);
     const playerId = playerIds.get(socket);
     if (!playerId) {
-        return undefined;
+        return;
     }
     playerCount[players.get(playerId).team] -= 1;
     playerIds.delete(socket);
@@ -168,7 +170,7 @@ function sendTextFrame(socket, text) {
         payload.copy(frame, 4);
         socket.write(frame);
     } else {
-        return undefined;
+        return;
     }
 }
 
@@ -313,7 +315,7 @@ function handleStateMessage(socket, playerId, state) {
     const player = players.get(playerId);
     if (!player || !state) {
         socket.destroy();
-        return undefined;
+        return;
     }
     updatePlayerMovement(player, state);
     updatePlayerDirection(player, state);
@@ -329,7 +331,7 @@ function updatePlayerMovement(player, state) {
     const moveY = Number(state.down === true) - Number(state.up === true);
     const moveLength = Math.hypot(moveX, moveY);
     if (moveLength === 0) {
-        return undefined;
+        return;
     }
     const normalizedMoveX = moveX / moveLength;
     const normalizedMoveY = moveY / moveLength;
@@ -352,24 +354,62 @@ function updatePlayerMovement(player, state) {
 
 function updatePlayerDirection(player, state) {
     if (Number.isNaN(state.directionX) || Number.isNaN(state.directionY)) {
-        return undefined;
-    }
-    if (state.directionX === 0 && state.directionY === 0) {
-        return undefined;
+        return;
     }
     if (Math.hypot(state.directionX, state.directionY) < 0.99 || Math.hypot(state.directionX, state.directionY) > 1.01) {
         player.directionX = 1;
         player.directionY = 0;
-        return undefined;
+        return;
     }
     player.directionX = state.directionX;
     player.directionY = state.directionY;
 }
 
+function recoverPlayerHp(player) {
+    if (player.hpTime + PLAYER_HP_COOLDOWN > time) {
+        return;
+    }
+
+    if (player.hp < PLAYER_MAX_HP) {
+        player.hp = Math.min(player.hp + PLAYER_RECOVER_HP, PLAYER_MAX_HP);
+        player.hpTime = time;
+    }
+}
+
+function updatePlayerPainting(player, state) {
+    if (state.isPainting !== true) {
+        return;
+    }
+    const tileX = Math.floor(player.x + 0.25);
+    const tileY = Math.floor(player.y + 0.25);
+    const currentTile = map[tileY][tileX];
+    updateTeamPoint(player.team, currentTile);
+    paintTile(player.team, tileX, tileY);
+}
+
+function updateTeamPoint(team, currentTile) {
+    if (currentTile === ".") {
+        teamPoint[team] += 1;
+    } else if (currentTile === ENEMY_TEAM[team]) {
+        teamPoint[ENEMY_TEAM[team]] -= 1;
+        teamPoint[team] += 1;
+    }
+    broadcast(true, null, { type: "updateTeamPoint", teamPoint: teamPoint });
+}
+
+function paintTile(team, tileX, tileY) {
+    if (map[tileY][tileX] === team) {
+        return;
+    }
+    const newStr = map[tileY].slice(0, tileX) + team + map[tileY].slice(tileX + 1);
+    map[tileY] = newStr;
+    broadcast(true, null, { type: "paint", paintedY: tileY, str: newStr });
+}
+
 function updatePlayerShooting(player, state) {
     player.isShooting = (state.isShooting === true);
     if (!player.isShooting || !player.canShoot) {
-        return undefined;
+        return;
     }
     const bullet = createBullet(player);
     bullets.add(bullet);
@@ -403,10 +443,12 @@ function updateBullet(bullet) {
     function isBulletOutsideMap(bullet) {
         return (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40);
     }
+    
     for (let i = 0; i < 50; i++) {
         bullet.x += bullet.directionX * BULLET_SPEED / 50;
         bullet.y += bullet.directionY * BULLET_SPEED / 50;
         if (isBulletOutsideMap(bullet) || checkBulletWallCollision(bullet.x, bullet.y)) {
+            broadcast(true, null, { type: "updateBullet", bullet: bullet });
             deleteBullet(bullet);
             return false;
         }
@@ -424,7 +466,7 @@ function updateBullet(bullet) {
 function handleBulletHit(bullet, hitPlayerId) {
     const hitPlayer = players.get(hitPlayerId);
     if (!hitPlayer) {
-        return undefined;
+        return;
     }
     hitPlayer.hp -= BULLET_DAMAGE;
     if (hitPlayer.hp <= 0) {
@@ -434,9 +476,10 @@ function handleBulletHit(bullet, hitPlayerId) {
         hitPlayer.y = (hitPlayer.team === "R") ? 1.25 : 38.25;
         broadcast(true, null, { type: "playerSpawn", player: hitPlayer });
     }
+    broadcast(true, null, { type: "updateBullet", bullet: bullet });
     deleteBullet(bullet);
     broadcast(true, null, { type: "playerUpdate", playerId: hitPlayerId, player: hitPlayer });
-    return undefined;
+    return;
 }
 
 function deleteBullet(bullet) {
@@ -456,59 +499,18 @@ function createBullet(player) {
     };
 }
 
-function recoverPlayerHp(player) {
-    if (player.hpTime + PLAYER_HP_COOLDOWN > time) {
-        return undefined;
-    }
-
-    if (player.hp < PLAYER_MAX_HP) {
-        player.hp = Math.min(player.hp + 1, PLAYER_MAX_HP);
-        player.hpTime = time;
-    }
-}
-
-function updatePlayerPainting(player, state) {
-    if (state.isPainting !== true) {
-        return undefined;
-    }
-    const tileX = Math.floor(player.x + 0.25);
-    const tileY = Math.floor(player.y + 0.25);
-    const currentTile = map[tileY][tileX];
-    updateTeamPoint(player.team, currentTile);
-    paintTile(player.team, tileX, tileY);
-}
-
-function updateTeamPoint(team, currentTile) {
-    if (currentTile === ".") {
-        teamPoint[team] += 1;
-    } else if (currentTile === ENEMY_TEAM[team]) {
-        teamPoint[ENEMY_TEAM[team]] -= 1;
-        teamPoint[team] += 1;
-    }
-    broadcast(true, null, { type: "updateTeamPoint", teamPoint: teamPoint });
-}
-
-function paintTile(team, tileX, tileY) {
-    if (map[tileY][tileX] === team) {
-        return undefined;
-    }
-    const newStr = map[tileY].slice(0, tileX) + team + map[tileY].slice(tileX + 1);
-    map[tileY] = newStr;
-    broadcast(true, null, { type: "paint", paintedY: tileY, str: newStr });
-}
-
 const server = http.createServer((request, response) => {
     if (!(request.method === "GET" && (request.url === "/" || request.url === "/index.html"))) {
         response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
         response.end("404 Not Found");
-        return undefined;
+        return;
     }
     const filePath = path.join(__dirname, "public", "index.html");
     fs.readFile(filePath, (error, fileData) => {
         if (error) {
             response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
             response.end("index.htmlを読み込めませんでした。");
-            return undefined;
+            return;
         }
         response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         response.end(fileData);
@@ -519,7 +521,7 @@ server.on("upgrade", (request, socket, head) => {
     const websocketKey = request.headers["sec-websocket-key"];
     if (!websocketKey) {
         socket.destroy();
-        return undefined;
+        return;
     }
     const magicString = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     const acceptKey = crypto
@@ -550,7 +552,7 @@ server.on("upgrade", (request, socket, head) => {
     const newPlayer = {
         id: playerId,
         hp: PLAYER_MAX_HP,
-        hpTime: -60,
+        hpTime: PLAYER_HP_COOLDOWN,
         x: (playerTeam === "R") ? 1.25 : 38.25,
         y: (playerTeam === "R") ? 1.25 : 38.25,
         team: playerTeam,
@@ -570,23 +572,23 @@ server.on("upgrade", (request, socket, head) => {
     let receiveBuffer = Buffer.alloc(0);
     socket.on("data", (data) => {
         if (receiveBuffer === null) {
-            return undefined;
+            return;
         }
         receiveBuffer = Buffer.concat([receiveBuffer, data]);
         if (receiveBuffer.length > MAX_BUFFER_SIZE) {
             socket.destroy();
-            return undefined;
+            return;
         }
         receiveBuffer = processReceivedData(socket, receiveBuffer);
     });
     if (head && head.length > 0) {
         if (receiveBuffer === null) {
-            return undefined;
+            return;
         }
         receiveBuffer = Buffer.concat([receiveBuffer, head]);
         if (receiveBuffer.length > MAX_BUFFER_SIZE) {
             socket.destroy();
-            return undefined;
+            return;
         }
         receiveBuffer = processReceivedData(socket, receiveBuffer);
     }
@@ -600,7 +602,7 @@ server.on("upgrade", (request, socket, head) => {
     });
 
     socket.on("error", (error) => {
-        console.log("websocketエラー:", error.message);
+        console.log("WebSocketエラー:", error.message);
         cleanupSocket(socket);
     });
 });
