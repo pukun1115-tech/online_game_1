@@ -295,7 +295,7 @@ function processPlayerState(socket, playerId, text) {
             //移動
             const moveX = Number(obj.state.right === true) - Number(obj.state.left === true);
             const moveY = Number(obj.state.down === true) - Number(obj.state.up === true);
-            const moveSpeed = (map[paintingY][paintingX] === ".") ? 0.1 : ((map[paintingY][paintingX] === player.team) ? 0.15 : 0.08);
+            const moveSpeed = (map[paintingY][paintingX] === ".") ? 0.06 : ((map[paintingY][paintingX] === player.team) ? 0.08 : 0.04);
             const moveLength = Math.hypot(moveX, moveY);
             if (moveLength > 0) {
                 const normalizedMoveX = moveX / moveLength;
