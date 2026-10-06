@@ -2,8 +2,18 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const PORT = process.env.PORT || 3000;
 
 const MAX_BUFFER_SIZE = 512 * 512;
+const PLAYER_MAX_HP = 100;
+const PLAYER_HP_COOLDOWN = 60;
+const TILE_SIZE = 64;
+const PLAYER_RADIUS = 16;
+const BULLET_RADIUS = 4;
+const ENEMY_TEAM = { R: "B", B: "R" };
+const SHOOT_COOLDOWN = 200;
+const BULLET_SPEED = 0.8;
+const BULLET_DAMAGE = 5;
 const sockets = new Set();
 const players = new Map();
 const playerIds = new Map();
@@ -80,7 +90,7 @@ function checkPlayerCollision(nx, ny) {
     for (let y = 0; y < map.length; y++) {
         for (let x = 0; x < map[y].length; x++) {
             if (map[y][x] !== "#") continue;
-            if (checkCircleRectCollision({ x: (nx + 0.25) * 4, y: (ny + 0.25) * 4, r: 0.25 * 4 }, { left: x * 4, right: (x + 1) * 4, up: y * 4, down: (y + 1) * 4 })) {
+            if (checkCircleRectCollision({ x: (nx + 0.25), y: (ny + 0.25), r: 0.25 }, { left: x, right: (x + 1), up: y, down: (y + 1) })) {
                 return true;
             }
         }
@@ -92,7 +102,7 @@ function checkBulletWallCollision(nx, ny) {
     for (let y = 0; y < map.length; y++) {
         for (let x = 0; x < map[y].length; x++) {
             if (map[y][x] !== "#") continue;
-            if (checkCircleRectCollision({ x: nx * 16, y: ny * 16, r: 0.0625 * 16 }, { left: x * 16, right: (x + 1) * 16, up: y * 16, down: (y + 1) * 16 })) {
+            if (checkCircleRectCollision({ x: nx, y: ny, r: 0.0625 }, { left: x, right: (x + 1), up: y, down: (y + 1) })) {
                 return true;
             }
         }
@@ -100,13 +110,20 @@ function checkBulletWallCollision(nx, ny) {
     return false;
 }
 
-function checkBulletPlayerCollision(nx, ny) {
+function checkBulletPlayerCollision(b) {
     for (const p of players.keys()) {
-        if (checkCircleCircleCollision({ x: nx * 16, y: ny * 16, r: 0.0625 * 16 }, { x: (players.get(p).x + 0.25) * 16, y: (players.get(p).y + 0.25) * 16, r: 0.25 * 16 })) {
+        if (players.get(p).team === b.bulletTeam) {
+            continue;
+        }
+        if (checkCircleCircleCollision({ x: b.x, y: b.y, r: 0.0625 }, { x: (players.get(p).x + 0.25), y: (players.get(p).y + 0.25), r: 0.25 })) {
             return p;
         }
     }
     return null;
+}
+
+function getPlayerMoveSpeed(player, tileX, tileY) {
+    return (map[tileY][tileX] === ".") ? 0.06 : ((map[tileY][tileX] === player.team) ? 0.08 : 0.04);
 }
 
 //
@@ -282,125 +299,8 @@ function processPlayerState(socket, playerId, text) {
         const obj = JSON.parse(text);
         if (!obj.type) {
             socket.destroy();
-            return undefined;
         } else if (obj.type === "state") {
-            const player = players.get(playerId);
-            if (!player || !obj.state) {
-                socket.destroy();
-                return null;
-            }
-            //今いるタイル
-            const paintingX = Math.floor(player.x + 0.25);
-            const paintingY = Math.floor(player.y + 0.25);
-            //移動
-            const moveX = Number(obj.state.right === true) - Number(obj.state.left === true);
-            const moveY = Number(obj.state.down === true) - Number(obj.state.up === true);
-            const moveSpeed = (map[paintingY][paintingX] === ".") ? 0.06 : ((map[paintingY][paintingX] === player.team) ? 0.08 : 0.04);
-            const moveLength = Math.hypot(moveX, moveY);
-            if (moveLength > 0) {
-                const normalizedMoveX = moveX / moveLength;
-                const normalizedMoveY = moveY / moveLength;
-                for (let i = 0; i < 5; i++) {
-                    const nextX = player.x + (normalizedMoveX * moveSpeed) / 5;
-                    const nextY = player.y + (normalizedMoveY * moveSpeed) / 5;
-                    if (!checkPlayerCollision(nextX, player.y)) {
-                        player.x = nextX;
-                    }
-                    if (!checkPlayerCollision(player.x, nextY)) {
-                        player.y = nextY;
-                    }
-                }
-            }
-            //方向
-            if (!Number.isNaN(obj.state.directionX) && !Number.isNaN(obj.state.directionY)) {
-                player.directionX = obj.state.directionX;
-                player.directionY = obj.state.directionY;
-            }
-            broadcast(true, null, { type: "playerUpdate", playerId: playerId, player: player });
-            //いろぬり
-            if (obj.state.isPainting) {
-                const enemyTeam = { R: "B", B: "R" };
-                const newChar = player.team;
-                if (map[paintingY][paintingX] === ".") {
-                    teamPoint[player.team] += 1;
-                } else if (map[paintingY][paintingX] === enemyTeam[player.team]) {
-                    teamPoint[enemyTeam[player.team]] -= 1;
-                    teamPoint[player.team] += 1;
-                }
-                broadcast(true, null, { type: "updateTeamPoint", teamPoint: teamPoint });
-                if (map[paintingY][paintingX] !== newChar) {
-                    const str = map[paintingY].slice(0, paintingX) + newChar + map[paintingY].slice(paintingX + 1);
-                    map[paintingY] = str;
-                    broadcast(true, null, { type: "paint", paintedY: paintingY, str: str });
-                }
-            }
-            //Hp回復
-            if (player.hpTime + 60 <= time) {
-                player.hp = Math.min(player.hp + 1, 100);
-                player.hpTime = time;
-            }
-            broadcast(true, null, { type: "playerUpdate", playerId: player.id, player: player });
-            //撃つ
-            player.isShooting = (obj.state.isShooting === true);
-            if (obj.state.isShooting) {
-                if (player.canShoot) {
-                    const bullet = {
-                        playerId: playerId,
-                        bulletId: crypto.randomUUID(),
-                        bulletTeam: player.team,
-                        x: player.x + 0.25,
-                        y: player.y + 0.25,
-                        directionX: player.directionX,
-                        directionY: player.directionY,
-                    };
-                    bullets.add(bullet);
-                    broadcast(true, null, { type: "addBullet", bullet: bullet });
-                    const shootCooldown = 200;
-                    const bulletSpeed = 0.8;
-                    player.canShoot = false;
-                    setTimeout(() => { player.canShoot = true; }, shootCooldown);
-                    player.shooted = true;
-                    setTimeout(() => { player.shooted = false; }, shootCooldown / 3);
-                    function updateBullet() {
-                        for (let i = 0; i < 50; i++) {
-                            bullet.x += bullet.directionX * bulletSpeed / 50;
-                            bullet.y += bullet.directionY * bulletSpeed / 50;
-                            if (
-                                (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40) ||
-                                (checkBulletWallCollision(bullet.x, bullet.y))
-                            ) {
-                                bullets.delete(bullet);
-                                broadcast(true, null, { type: "deleteBullet", bullet: bullet });
-                                return undefined;
-                            }
-                            const hitId = checkBulletPlayerCollision(bullet.x, bullet.y);
-                            if (hitId !== null) {
-                                if (players.get(hitId).team === bullet.bulletTeam) {
-                                    continue;
-                                }
-                                const hitPlayer = players.get(hitId);
-                                if (hitPlayer) {
-                                    hitPlayer.hp -= 5;
-                                }
-                                if (hitPlayer.hp <= 0) {
-                                    broadcast(true, null, { type: "playerDied", died: hitId, kill: bullet.playerId });
-                                    hitPlayer.hp = 100;
-                                    hitPlayer.x = (hitPlayer.team === "R") ? 1.25 : 38.25;
-                                    hitPlayer.y = (hitPlayer.team === "R") ? 1.25 : 38.25;
-                                    broadcast(true, null, { type: "playerSpawn", player: hitPlayer });
-                                }
-                                bullets.delete(bullet);
-                                broadcast(true, null, { type: "deleteBullet", bullet: bullet });
-                                broadcast(true, null, { type: "playerUpdate", playerId: hitId, player: hitPlayer });
-                                return undefined;
-                            }
-                        }
-                        broadcast(true, null, { type: "updateBullet", bullet: bullet });
-                        setTimeout(() => updateBullet(), (1000 / 60));
-                    }
-                    setTimeout(() => updateBullet(), (1000 / 60));
-                }
-            }
+            handleStateMessage(socket, playerId, obj.state);
         } else if (obj.type === "chat") {
             broadcast(true, null, { type: "chat", message: `${playerId}: ${obj.message}` });
         }
@@ -409,7 +309,194 @@ function processPlayerState(socket, playerId, text) {
     }
 }
 
-//サーバーを作る
+function handleStateMessage(socket, playerId, state) {
+    const player = players.get(playerId);
+    if (!player || !state) {
+        socket.destroy();
+        return undefined;
+    }
+    updatePlayerMovement(player, state);
+    updatePlayerDirection(player, state);
+    recoverPlayerHp(player);
+    updatePlayerShooting(player, state);
+    broadcast(true, null, { type: "playerUpdate", playerId: playerId, player: player });
+
+    updatePlayerPainting(player, state);
+}
+
+function updatePlayerMovement(player, state) {
+    const moveX = Number(state.right === true) - Number(state.left === true);
+    const moveY = Number(state.down === true) - Number(state.up === true);
+    const moveLength = Math.hypot(moveX, moveY);
+    if (moveLength === 0) {
+        return undefined;
+    }
+    const normalizedMoveX = moveX / moveLength;
+    const normalizedMoveY = moveY / moveLength;
+
+    const tileX = Math.floor(player.x + 0.25);
+    const tileY = Math.floor(player.y + 0.25);
+    const moveSpeed = getPlayerMoveSpeed(player, tileX, tileY);
+
+    for (let i = 0; i < 5; i++) {
+        const nextX = player.x + (normalizedMoveX * moveSpeed) / 5;
+        const nextY = player.y + (normalizedMoveY * moveSpeed) / 5;
+        if (!checkPlayerCollision(nextX, player.y)) {
+            player.x = nextX;
+        }
+        if (!checkPlayerCollision(player.x, nextY)) {
+            player.y = nextY;
+        }
+    }
+}
+
+function updatePlayerDirection(player, state) {
+    if (Number.isNaN(state.directionX) || Number.isNaN(state.directionY)) {
+        return undefined;
+    }
+    if (state.directionX === 0 && state.directionY === 0) {
+        return undefined;
+    }
+    if (Math.hypot(state.directionX, state.directionY) < 0.99 || Math.hypot(state.directionX, state.directionY) > 1.01) {
+        player.directionX = 1;
+        player.directionY = 0;
+        return undefined;
+    }
+    player.directionX = state.directionX;
+    player.directionY = state.directionY;
+}
+
+function updatePlayerShooting(player, state) {
+    player.isShooting = (state.isShooting === true);
+    if (!player.isShooting || !player.canShoot) {
+        return undefined;
+    }
+    const bullet = createBullet(player);
+    bullets.add(bullet);
+    broadcast(true, null, { type: "addBullet", bullet: bullet });
+    startShootCooldown(player);
+    startBulletMovement(bullet);
+}
+
+function startShootCooldown(player) {
+    player.canShoot = false;
+    setTimeout(() => {
+        player.canShoot = true;
+    }, SHOOT_COOLDOWN);
+
+    player.shooted = true;
+    setTimeout(() => {
+        player.shooted = false;
+    }, SHOOT_COOLDOWN / 3);
+}
+
+function startBulletMovement(bullet) {
+    setTimeout(() => {
+        const shouldContinue = updateBullet(bullet);
+        if (shouldContinue) {
+            startBulletMovement(bullet);
+        }
+    }, (1000 / 60));
+}
+
+function updateBullet(bullet) {
+    function isBulletOutsideMap(bullet) {
+        return (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40);
+    }
+    for (let i = 0; i < 50; i++) {
+        bullet.x += bullet.directionX * BULLET_SPEED / 50;
+        bullet.y += bullet.directionY * BULLET_SPEED / 50;
+        if (isBulletOutsideMap(bullet) || checkBulletWallCollision(bullet.x, bullet.y)) {
+            deleteBullet(bullet);
+            return false;
+        }
+        const hitPlayerId = checkBulletPlayerCollision(bullet);
+
+        if (hitPlayerId !== null) {
+            handleBulletHit(bullet, hitPlayerId);
+            return false;
+        }
+    }
+    broadcast(true, null, { type: "updateBullet", bullet: bullet });
+    return true;
+}
+
+function handleBulletHit(bullet, hitPlayerId) {
+    const hitPlayer = players.get(hitPlayerId);
+    if (!hitPlayer) {
+        return undefined;
+    }
+    hitPlayer.hp -= BULLET_DAMAGE;
+    if (hitPlayer.hp <= 0) {
+        broadcast(true, null, { type: "playerDied", died: hitPlayerId, kill: bullet.playerId });
+        hitPlayer.hp = PLAYER_MAX_HP;
+        hitPlayer.x = (hitPlayer.team === "R") ? 1.25 : 38.25;
+        hitPlayer.y = (hitPlayer.team === "R") ? 1.25 : 38.25;
+        broadcast(true, null, { type: "playerSpawn", player: hitPlayer });
+    }
+    deleteBullet(bullet);
+    broadcast(true, null, { type: "playerUpdate", playerId: hitPlayerId, player: hitPlayer });
+    return undefined;
+}
+
+function deleteBullet(bullet) {
+    bullets.delete(bullet);
+    broadcast(true, null, { type: "deleteBullet", bullet: bullet });
+}
+
+function createBullet(player) {
+    return {
+        playerId: player.id,
+        bulletId: crypto.randomUUID(),
+        bulletTeam: player.team,
+        x: player.x + 0.25,
+        y: player.y + 0.25,
+        directionX: player.directionX,
+        directionY: player.directionY,
+    };
+}
+
+function recoverPlayerHp(player) {
+    if (player.hpTime + PLAYER_HP_COOLDOWN > time) {
+        return undefined;
+    }
+
+    if (player.hp < PLAYER_MAX_HP) {
+        player.hp = Math.min(player.hp + 1, PLAYER_MAX_HP);
+        player.hpTime = time;
+    }
+}
+
+function updatePlayerPainting(player, state) {
+    if (state.isPainting !== true) {
+        return undefined;
+    }
+    const tileX = Math.floor(player.x + 0.25);
+    const tileY = Math.floor(player.y + 0.25);
+    const currentTile = map[tileY][tileX];
+    updateTeamPoint(player.team, currentTile);
+    paintTile(player.team, tileX, tileY);
+}
+
+function updateTeamPoint(team, currentTile) {
+    if (currentTile === ".") {
+        teamPoint[team] += 1;
+    } else if (currentTile === ENEMY_TEAM[team]) {
+        teamPoint[ENEMY_TEAM[team]] -= 1;
+        teamPoint[team] += 1;
+    }
+    broadcast(true, null, { type: "updateTeamPoint", teamPoint: teamPoint });
+}
+
+function paintTile(team, tileX, tileY) {
+    if (map[tileY][tileX] === team) {
+        return undefined;
+    }
+    const newStr = map[tileY].slice(0, tileX) + team + map[tileY].slice(tileX + 1);
+    map[tileY] = newStr;
+    broadcast(true, null, { type: "paint", paintedY: tileY, str: newStr });
+}
+
 const server = http.createServer((request, response) => {
     if (!(request.method === "GET" && (request.url === "/" || request.url === "/index.html"))) {
         response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
@@ -462,7 +549,7 @@ server.on("upgrade", (request, socket, head) => {
     }
     const newPlayer = {
         id: playerId,
-        hp: 100,
+        hp: PLAYER_MAX_HP,
         hpTime: -60,
         x: (playerTeam === "R") ? 1.25 : 38.25,
         y: (playerTeam === "R") ? 1.25 : 38.25,
@@ -477,7 +564,9 @@ server.on("upgrade", (request, socket, head) => {
     playerIds.set(socket, playerId);
     playerCount[playerTeam] += 1;
     sendTextFrame(socket, JSON.stringify({ type: "init", playerId: playerId, map: map, players: Array.from(players.values()), bullets: Array.from(bullets), teamPoint: teamPoint }));
-    broadcast(false, socket, { type: "playerJoined", player: newPlayer });
+    broadcast(false, socket, { type: "playerSpawn", player: newPlayer });
+    broadcast(false, socket, { type: "chat", message: `${playerId} joined the game.` });
+
     let receiveBuffer = Buffer.alloc(0);
     socket.on("data", (data) => {
         if (receiveBuffer === null) {
@@ -516,7 +605,9 @@ server.on("upgrade", (request, socket, head) => {
     });
 });
 
-server.listen(3000, () => {
+server.listen(PORT, "0.0.0.0", () => {
     console.log("サーバーが起動しました。");
-    console.log("http://localhost:3000\r\n");
+    if (!process.env.PORT) {
+        console.log("http://localhost:3000\r\n");
+    }
 });

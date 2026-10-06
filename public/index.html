@@ -195,15 +195,12 @@
                         addMessage("Connected to the server.");
                         addMessage("Your ID: " + playerId);
                         addMessage("Your team: " + (players.get(playerId).team === "R" ? "Red" : "Blue"));
-                    } else if (data.type === "playerJoined") {
-                        players.set(data.player.id, data.player);
-                        addMessage(data.player.id + " joined the game.");
                     } else if (data.type === "playerLeft") {
                         players.delete(data.playerId);
                         addMessage(data.playerId + " left the game.");
                     } else if (data.type === "playerUpdate") {
                         players.set(data.playerId, data.player);
-                    }  else if (data.type === "playerDied") {
+                    } else if (data.type === "playerDied") {
                         addMessage(data.died + " was killed by " + data.kill + ".");
                     } else if (data.type === "playerSpawn") {
                         players.set(data.player.id, data.player);
@@ -281,7 +278,7 @@
                     }
                 }
                 for (const b of bullets) {
-                    ctx.lineWidth = 4;
+                    ctx.lineWidth = 2;
                     ctx.strokeStyle = b.bulletTeam === "R" ? "rgba(255, 0, 0, 1)" : "rgba(0, 0, 255, 1)";
                     ctx.beginPath();
                     ctx.arc((b.x - you.x) * 64 + centerX, (b.y - you.y) * 64 + centerY, 4, 0, Math.PI * 2);
