@@ -353,8 +353,8 @@
                 if (socket.readyState === WebSocket.OPEN) {
                     const centerX = canvas.width / 2;
                     const centerY = canvas.height / 2;
-                    const dx = inputState.pointerX - centerX;
-                    const dy = inputState.pointerY - centerY;
+                    const dx = inputState.pointerX - (centerX + 16);
+                    const dy = inputState.pointerY - (centerY + 16);
                     const length = Math.hypot(dx, dy);
                     const directionX = dx / length;
                     const directionY = dy / length;
