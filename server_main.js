@@ -1,18 +1,20 @@
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
-const crypto = require("crypto");
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+const __dirname = import.meta.dirname;
 const PORT = process.env.PORT || 3000;
 const MAX_BUFFER_SIZE = 512 * 512;
 
 const PLAYER_MAX_HP = 100;
 const PLAYER_HP_COOLDOWN = 60;
 const PLAYER_RECOVER_HP = 1;
+const PLAYER_MOVE_SPEED = { own: 0.08, neutral: 0.06, enemt: 0.04 };
 const TILE_SIZE = 1;
 const PLAYER_RADIUS = 0.25;
 const BULLET_RADIUS = 0.0625;
 const ENEMY_TEAM = { R: "B", B: "R" };
-const SHOOT_COOLDOWN = 200;
+const SHOOT_COOLDOWN = 150;
 const BULLET_SPEED = 0.8;
 const BULLET_DAMAGE = 5;
 
@@ -27,48 +29,7 @@ setInterval(() => {
     time++;
 }, (1000 / 60));
 
-const map = [
-    "########################################",
-    "#...#...........................#......#",
-    "###.#.##...............................#",
-    "#...#.##...............................#",
-    "#.###.##..####################..####...#",
-    "#...............................####...#",
-    "#.#.##..........................####...#",
-    "#.#.#...........................####...#",
-    "#.#.#..................................#",
-    "#...#...#..........##..............#...#",
-    "#..##....#.........##......#.#.....#...#",
-    "#...#.....#........##.......#......#...#",
-    "##..#......#.......##......#.#.....#...#",
-    "#...#.......#......##..................#",
-    "#.#.#........#.............#.#.#.#.#...#",
-    "#...#.....#............................#",
-    "#...#.....#.................#.#.#.#....#",
-    "#...#...#########......................#",
-    "#......................................#",
-    "#................#....#................#",
-    "#..................##..................#",
-    "#......................................#",
-    "#......................#########...#...#",
-    "#....#.#.#.#.................#.....#...#",
-    "#............................#.....#...#",
-    "#...#.#.#.#.#.............#........#.#.#",
-    "#..................##......#.......#...#",
-    "#...#.....#.#......##.......#......#..##",
-    "#...#......#.......##........#.....#...#",
-    "#...#.....#.#......##.........#....##..#",
-    "#...#..............##..........#...#...#",
-    "#..................................#.#.#",
-    "#...####...........................#.#.#",
-    "#...####..........................##.#.#",
-    "#...####...............................#",
-    "#...####..####################..##.###.#",
-    "#...............................##.#...#",
-    "#...............................##.#.###",
-    "#......#...........................#...#",
-    "########################################",
-];
+import { map } from "./server_map.js";
 
 function checkCircleRectCollision(circle, rect) {
     const px = Math.max(Math.min(circle.x, rect.right), rect.left);
@@ -125,7 +86,7 @@ function checkBulletPlayerCollision(b) {
 }
 
 function getPlayerMoveSpeed(player, tileX, tileY) {
-    return (map[tileY][tileX] === ".") ? 0.06 : ((map[tileY][tileX] === player.team) ? 0.08 : 0.04);
+    return (map[tileY][tileX] === ".") ? PLAYER_MOVE_SPEED.neutral : ((map[tileY][tileX] === player.team) ? PLAYER_MOVE_SPEED.own : PLAYER_MOVE_SPEED.enemy);
 }
 
 //
@@ -443,7 +404,7 @@ function updateBullet(bullet) {
     function isBulletOutsideMap(bullet) {
         return (bullet.x < 0 || bullet.x >= 40 || bullet.y < 0 || bullet.y >= 40);
     }
-    
+
     for (let i = 0; i < 50; i++) {
         bullet.x += bullet.directionX * BULLET_SPEED / 50;
         bullet.y += bullet.directionY * BULLET_SPEED / 50;

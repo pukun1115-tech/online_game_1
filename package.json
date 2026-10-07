@@ -2,6 +2,7 @@
     "name": "websocket_test2",
     "version": "1.0.0",
     "main": "server_main.js",
+    "type": "module",
     "scripts": {
         "start": "node server_main.js"
     }
