@@ -10,3 +10,6 @@ export const MYME_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".ico": "image/x-icon",
 };
+
+export const TEXT_OPCODE = 0b00000001;
+export const CLOSE_OPCODE = 0b00001000;
