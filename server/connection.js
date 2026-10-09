@@ -81,3 +81,27 @@ export function sendCloseFrame(socket, statusCode = 1000, reason = "") {
     payload.copy(frame, 2);
     socket.write(frame);
 }
+
+export function decodeTextFrame(frame) {
+    const secondByte = frame[1];
+    const lengthCode = secondByte & 0b01111111;
+    let payloadLength;
+    let payloadStartIndex;
+    if (lengthCode <= 125) {
+        payloadLength = lengthCode;
+        payloadStartIndex = 6;
+    } else if (lengthCode === 126) {
+        payloadLength = frame.readUInt16BE(2);
+        payloadStartIndex = 8;
+    } else {
+        return null;
+    }
+    const maskingKeyStartIndex = payloadStartIndex - 4;
+    const maskingKey = frame.subarray(maskingKeyStartIndex, maskingKeyStartIndex + 4);
+    const maskedPayload = frame.subarray(payloadStartIndex, payloadStartIndex + payloadLength);
+    const decodedPayload = Buffer.alloc(payloadLength);
+    for (let i = 0; i < payloadLength; i++) {
+        decodedPayload[i] = maskedPayload[i] ^ maskingKey[i % 4];
+    }
+    return decodedPayload.toString("utf8");
+}
