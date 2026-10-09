@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { DEFAULT_PATH, MYME_TYPES } from "./config.js";
+import { DEFAULT_PATH, MYME_TYPES, TEXT_OPCODE, CLOSE_OPCODE } from "./config.js";
 
 export function createHttpServer(request, response) {
     const requestUrl = (request.url === "/" ? "/index.html" : request.url);
@@ -14,7 +14,7 @@ export function createHttpServer(request, response) {
     const filePath = path.join(DEFAULT_PATH, "public", requestUrl);
     fs.readFile(filePath, (error, fileData) => {
         if (error) {
-            console.log("Could Not Read File. filePath: " + filePath);
+            throw new Error("Could Not Read File. filePath: " + filePath);
             response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
             response.end("Could Not Read File. filePath: " + filePath);
             return;
@@ -48,7 +48,6 @@ export function serverOnUpgrade(request, socket, head) {
 export function sendTextFrame(socket, text) {
     const payload = Buffer.from(text, "utf8");
     const FIN = 0b10000000;
-    const TEXT_OPCODE = 0b00000001;
     if (payload.length <= 125) {
         const frame = Buffer.alloc(2 + payload.length);
         frame[0] = FIN | TEXT_OPCODE;
@@ -65,4 +64,20 @@ export function sendTextFrame(socket, text) {
     } else {
         return;
     }
+}
+
+export function sendCloseFrame(socket, statusCode = 1000, reason = "") {
+    const reasonBuffer = Buffer.from(reason, "utf8");
+    if (reasonBuffer.length > 123) {
+        throw new Error("the close reason must not be more than 123bytes");
+    }
+    const payload = Buffer.alloc(reasonBuffer.length + 2);
+    const FIN = 0b10000000;
+    payload.writeUInt16BE(statusCode, 0);
+    reasonBuffer.copy(payload, 2);
+    const frame = Buffer.alloc(payload.length + 2);
+    frame[0] = FIN | CLOSE_OPCODE;
+    frame[1] = payload.length;
+    payload.copy(frame, 2);
+    socket.write(frame);
 }
