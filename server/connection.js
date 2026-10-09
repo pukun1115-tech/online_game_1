@@ -1,3 +1,28 @@
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import { DEFAULT_PATH, MYME_TYPES } from "./config.js";
+
+export function createHttpServer(request, response) {
+    const requestUrl = (request.url === "/" ? "/index.html" : request.url);
+    if (request.method !== "GET" || (requestUrl !== "/index.html" && requestUrl !== "/script.js" && requestUrl !== "/style.css" && requestUrl !== "/images/favicon.ico")) {
+        response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("404 Not Found");
+        return;
+    }
+    const extension = path.extname(requestUrl);
+    const filePath = path.join(DEFAULT_PATH, "public", requestUrl);
+    fs.readFile(filePath, (error, fileData) => {
+        if (error) {
+            console.log("Could Not Read File. filePath: " + filePath);
+            response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+            response.end("Could Not Read File. filePath: " + filePath);
+            return;
+        }
+        response.writeHead(200, { "Content-Type": MYME_TYPES[extension] || "application/octet-stream" });
+        response.end(fileData);
+    });
+}
 export function serverOnUpgrade(request, socket, head) {
     const webSocketKey = request.headers["sec-websocket-key"];
     if (!webSocketKey) {
