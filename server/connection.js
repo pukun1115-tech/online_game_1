@@ -23,6 +23,7 @@ export function createHttpServer(request, response) {
         response.end(fileData);
     });
 }
+
 export function serverOnUpgrade(request, socket, head) {
     const webSocketKey = request.headers["sec-websocket-key"];
     if (!webSocketKey) {
@@ -42,4 +43,26 @@ export function serverOnUpgrade(request, socket, head) {
         "\r\n"
     );
     socket.write(response);
+}
+
+export function sendTextFrame(socket, text) {
+    const payload = Buffer.from(text, "utf8");
+    const FIN = 0b10000000;
+    const TEXT_OPCODE = 0b00000001;
+    if (payload.length <= 125) {
+        const frame = Buffer.alloc(2 + payload.length);
+        frame[0] = FIN | TEXT_OPCODE;
+        frame[1] = payload.length;
+        payload.copy(frame, 2);
+        socket.write(frame);
+    } else {
+        const frame = Buffer.alloc(4 + payload.length);
+        frame[0] = FIN | TEXT_OPCODE;
+        frame[1] = 126;
+        frame.writeUInt16BE(payload.length, 2);
+        payload.copy(frame, 4);
+        socket.write(frame);
+    } else {
+        return;
+    }
 }
