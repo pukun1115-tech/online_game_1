@@ -14,9 +14,9 @@ export function createHttpServer(request, response) {
     const filePath = path.join(DEFAULT_PATH, "public", requestUrl);
     fs.readFile(filePath, (error, fileData) => {
         if (error) {
-            throw new Error("Could Not Read File. filePath: " + filePath);
             response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
             response.end("Could Not Read File. filePath: " + filePath);
+            console.error("Could Not Read File. filePath: " + filePath);
             return;
         }
         response.writeHead(200, { "Content-Type": MYME_TYPES[extension] || "application/octet-stream" });
@@ -53,14 +53,18 @@ export function sendTextFrame(socket, text) {
         frame[0] = FIN | TEXT_OPCODE;
         frame[1] = payload.length;
         payload.copy(frame, 2);
-        socket.write(frame);
-    } else {
+        if (socket.writable) {
+            socket.write(frame);
+        }
+    } else if (payload.length <= 65535) {
         const frame = Buffer.alloc(4 + payload.length);
         frame[0] = FIN | TEXT_OPCODE;
         frame[1] = 126;
         frame.writeUInt16BE(payload.length, 2);
         payload.copy(frame, 4);
-        socket.write(frame);
+        if (socket.writable) {
+            socket.write(frame);
+        }
     } else {
         return;
     }
@@ -69,7 +73,8 @@ export function sendTextFrame(socket, text) {
 export function sendCloseFrame(socket, statusCode = 1000, reason = "") {
     const reasonBuffer = Buffer.from(reason, "utf8");
     if (reasonBuffer.length > 123) {
-        throw new Error("the close reason must not be more than 123bytes");
+        console.error("the close reason must not be more than 123bytes");
+        return;
     }
     const payload = Buffer.alloc(reasonBuffer.length + 2);
     const FIN = 0b10000000;
@@ -79,7 +84,9 @@ export function sendCloseFrame(socket, statusCode = 1000, reason = "") {
     frame[0] = FIN | CLOSE_OPCODE;
     frame[1] = payload.length;
     payload.copy(frame, 2);
-    socket.write(frame);
+    if (socket.writable) {
+        socket.write(frame);
+    }
 }
 
 export function decodeTextFrame(frame) {
@@ -104,4 +111,45 @@ export function decodeTextFrame(frame) {
         decodedPayload[i] = maskedPayload[i] ^ maskingKey[i % 4];
     }
     return decodedPayload.toString("utf8");
+}
+
+export function extractFrame(buffer) {
+    if (buffer.length < 2) {
+        return { frame: null, rest: buffer };
+    }
+    const firstByte = buffer[0];
+    const secondByte = buffer[1];
+
+    const fin = (firstByte >> 7) === 1;
+    const opcode = firstByte & 0b00001111;
+    const masked = (secondByte >> 7) === 1;
+    const lengthCode = secondeByte & 0b01111111;
+
+    if (!fin || (opcode !== 0b0001 && opcode !== 0b1000) || !masked) {
+        console.error("Invalid WebSocket frame");
+        return null;
+    }
+
+    let lengthBytes;
+    if (lengthCode <= 125) {
+        lengthBytes = 0;
+    } else if (lengthCode === 126) {
+        lengthBytes = 2;
+    } else {
+        return null;
+    }
+    const headerLength = 2 + lengthBytes + 4;
+    if (buffer.length < headerLength) {
+        return { frame: null, rest: buffer };
+    }
+    const payloadLength = (lengthCode <= 125 ? lengthCode : buffer.readUInt16BE(2));
+    const frameLength = headerLength + payloadLength;
+    if (buffer.length < frameLength) {
+        return { frame: null, rest: buffer };
+    }
+
+    return {
+        frame: buffer.subarray(0, frameLength),
+        rest: buffer.subarray(frameLength),
+    };
 }

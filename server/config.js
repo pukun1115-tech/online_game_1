@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export const DEFAULT_PATH = path.join("../", import.meta.dirname);
+export const DEFAULT_PATH = path.resolve(import.meta.dirname, "../");
 export const PORT = Number(process.env.PORT ?? 3000);
 export const isLocal = (process.env.PORT === undefined);
 export const MYME_TYPES = {

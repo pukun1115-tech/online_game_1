@@ -1,6 +1,6 @@
 import http from "node:http";
-import { PORT, DEFAULT_PATH, isLocal } from "./config.js";
-import { createHttpSeever, serverOnUpgrade } from "./connection.js";
+import { PORT, isLocal } from "./config.js";
+import { createHttpServer, serverOnUpgrade } from "./connection.js";
 
 const server = http.createServer((request, response) => {
     createHttpServer(request, response);
