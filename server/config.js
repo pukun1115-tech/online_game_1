@@ -13,3 +13,5 @@ export const MYME_TYPES = {
 
 export const TEXT_OPCODE = 0b00000001;
 export const CLOSE_OPCODE = 0b00001000;
+
+export const MAX_BUFFER_SIZE = 512 * 512;

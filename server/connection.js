@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { DEFAULT_PATH, MYME_TYPES, TEXT_OPCODE, CLOSE_OPCODE } from "./config.js";
+import { MAX_BUFFER_SIZE } from "./config.js";
 
 export function createHttpServer(request, response) {
     const requestUrl = (request.url === "/" ? "/index.html" : request.url);
@@ -24,7 +25,7 @@ export function createHttpServer(request, response) {
     });
 }
 
-export function serverOnUpgrade(request, socket, head) {
+export function serverOnUpgrade(request, socket, head, game) {
     const webSocketKey = request.headers["sec-websocket-key"];
     if (!webSocketKey) {
         socket.destroy();
@@ -43,6 +44,14 @@ export function serverOnUpgrade(request, socket, head) {
         "\r\n"
     );
     socket.write(response);
+
+    let receivedDataBuffer = Buffer.alloc(0);
+    if (head?.length > 0) {
+        receivedDataBuffer = Buffer.concat([receivedDataBuffer, head]);
+    }
+    socket.on("data", (data) => {
+        receivedDataBuffer = Buffer.concat([receivedDataBuffer, data]);
+    });
 }
 
 export function sendTextFrame(socket, text) {
